@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Task Tracker</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 10px; }
+h1 { text-align: center; }
+#toolbar { display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap; margin: 10px 0 15px; }
+#toolbar .group { background:#f5f5f5; padding:8px; border-radius:8px; display:flex; gap:8px; align-items:center; }
+#toolbar input[type="date"] { padding:3px; }
+#toolbar button { padding:6px 10px; border:none; border-radius:6px; cursor:pointer; background:#4CAF50; color:#fff; }
+#toolbar button.secondary { background:#607D8B; }
+#toolbar button.danger { background:#d9534f; }
+
+#topBar { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 15px; }
+#taskInputContainer { flex: 1; max-width: 50%; background: #f4f4f4; padding: 10px; border-radius: 5px; }
+/* Top-right: Completed Log */
+#logTopContainer { flex: 1; background: #eaeaea; padding: 5px; border-radius: 5px; overflow-y: auto; max-height: 120px; font-size: 12px; }
+#logTopContainer h3 { margin: 0 0 6px 0; }
+
+/* Bottom layout */
+#taskContainer { display: flex; justify-content: space-between; gap: 20px; }
+.column { background: #f9f9f9; padding: 10px; border-radius: 5px; min-height: 400px; }
+#permanentTasks { flex: 1; }
+#todaysTasks { flex: 1; }
+#monitoredColumn { flex: 2; display: flex; flex-direction: column; }
+
+/* Monitored blocks */
+.monitored-columns { display: flex; gap: 10px; }
+#fishTankCol { flex: 1.5; }
+#turfCol { flex: 0.5; }
+.monitored-header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 5px; gap: 5px; }
+.monitored-header input { flex: 1; font-size: 12px; padding: 2px; }
+.monitored-row { background: #fff; border: 1px solid #ccc; padding: 3px; margin-bottom: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.monitored-name { font-size: 13px; font-weight: bold; margin-right: auto; }
+.pill { display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 4px; margin-right: 2px; font-size: 11px; cursor: pointer; user-select: none; }
+.pill .label { font-size: 10px; margin-right: 6px; font-weight: 600; letter-spacing: .2px; }
+.pill.noclick { cursor: default; }
+.pill button { display: none; }
+
+.category { background: #ddd; padding: 5px; margin-top: 5px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.subcategory { background: #eee; padding: 5px; margin-left: 15px; cursor: pointer; }
+.task { background: white; padding: 5px; margin-left: 30px; display: flex; justify-content: space-between; align-items: center; }
+
+/* Batch add */
+.batchRow { display: flex; gap: 20px; margin-bottom: 10px; }
+.batchCol { flex: 1; }
+.batchItem { display: flex; gap: 5px; margin-bottom: 5px; }
+.batchItem input { flex: 1; padding: 5px; }
+.addRowBtn { padding: 0 10px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+.removeBtn { background: red; color: white; border: none; padding: 0 6px; cursor: pointer; }
+button.deleteBtn { background: red; color: white; border: none; padding: 2px 5px; cursor: pointer; }
+button.completeBtn { background: green; color: white; border: none; padding: 2px 5px; cursor: pointer; }
+
+/* Completed Log list */
+#logList { list-style: none; padding: 0; }
+#logList li { background: white; padding: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; }
+
+.hidden { display:none; }
+</style>
+</head>
+<body>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBM8-UblpxJMprW4S79gJtMaFSkG0SvEJY",
+    authDomain: "campus-cares.firebaseapp.com",
+    projectId: "campus-cares",
+    storageBucket: "campus-cares.firebasestorage.app",
+    messagingSenderId: "617226284452",
+    appId: "1:617226284452:web:14f9d238e79ba6854aa531",
+    measurementId: "G-78HSW48BCJ"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  window.__firebase = {
+    auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut,
+    doc, getDoc, setDoc, serverTimestamp
+  };
+</script>
+
+
+<h1>Task Tracker</h1>
+
+<!-- Auth bar -->
+<div id="authBar" style="display:flex; gap:8px; align-items:center; justify-content:center; margin:10px 0;">
+  <span id="userInfo" style="font-weight:600;"></span>
+  <button id="loginBtn" class="secondary">Sign in with Google</button>
+  <button id="logoutBtn" class="danger" style="display:none;">Sign out</button>
+  <span id="syncStatus" style="font-size:12px; opacity:.8;"></span>
+</div>
+
+
+<!-- Toolbar: Print + Export/Import -->
+<div id="toolbar">
+  <div class="group">
+    <strong>Print Completed Log by Date:</strong>
+    <label>From <input type="date" id="printFrom"></label>
+    <label>To <input type="date" id="printTo"></label>
+    <button onclick="printLogByDate()">Print Filtered Log</button>
+  </div>
+  <div class="group">
+    <strong>Session:</strong>
+    <button class="secondary" onclick="exportSession()">Download Session (.json)</button>
+    <input id="importFile" type="file" accept="application/json" class="hidden" onchange="importSession(this.files[0])">
+    <button class="secondary" onclick="document.getElementById('importFile').click()">Load Session</button>
+  </div>
+</div>
+
+<div id="topBar">
+    <div id="taskInputContainer">
+        <input type="text" id="batchCategory" placeholder="Category" list="categoryList" style="margin-bottom:10px; width: 100%;">
+        <datalist id="categoryList"></datalist>
+        <div class="batchRow">
+            <div class="batchCol">
+                <strong>Tasks</strong>
+                <div id="tasksContainer">
+                    <div class="batchItem">
+                        <input type="text" class="taskName" placeholder="Task Name">
+                        <button type="button" class="addRowBtn" onclick="addTaskRow()">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="batchCol">
+                <strong>Subcategories (optional)</strong>
+                <div id="subcatsContainer">
+                    <div class="batchItem">
+                        <input type="text" class="taskSubcategory" placeholder="Subcategory" list="subcategoryList">
+                        <button type="button" class="addRowBtn" onclick="addSubcatRow()">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <datalist id="subcategoryList"></datalist>
+        <button onclick="submitBatch()">Add Task(s)</button>
+    </div>
+
+    <!-- Top-right: Completed Log -->
+    <div id="logTopContainer">
+        <h3>Completed Log</h3>
+        <ul id="logList"></ul>
+    </div>
+</div>
+
+<div id="taskContainer">
+    <div class="column" id="permanentTasks">
+        <h2>Permanent Tasks</h2>
+        <div id="permanentList"></div>
+    </div>
+    <div class="column" id="todaysTasks">
+        <h2>Today's Tasks</h2>
+        <div id="todaysList"></div>
+    </div>
+
+    <!-- Bottom-right: Monitored section -->
+    <div class="column" id="monitoredColumn">
+        <h2>Monitored</h2>
+        <div class="monitored-columns">
+            <div class="monitored-col" id="fishTankCol">
+                <div class="monitored-header">
+                    Fish Tanks
+                    <input id="fishInput" type="text" placeholder="Location Name">
+                    <button class="completeBtn" onclick="addMonitoredFromInput('Fish Tank')">+</button>
+                </div>
+                <div id="fishTankList"></div>
+            </div>
+            <div class="monitored-col" id="turfCol">
+                <div class="monitored-header">
+                    Turfs
+                    <input id="turfInput" type="text" placeholder="Location Name">
+                    <button class="completeBtn" onclick="addMonitoredFromInput('Turf')">+</button>
+                </div>
+                <div id="turfList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===== Data =====
+let tasks = JSON.parse(localStorage.getItem("tasks")) || {};
+let todaysTasks = JSON.parse(localStorage.getItem("todaysTasks")) || {};
+let log = JSON.parse(localStorage.getItem("log")) || [];
+let monitoredTasks = JSON.parse(localStorage.getItem("monitoredTasks")) || [];
+let expandedCategory = null, expandedSubcategory = null, expandedTodayCategory = null, expandedTodaySubcategory = null;
+
+function saveData() {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+    localStorage.setItem("todaysTasks", JSON.stringify(todaysTasks));
+    localStorage.setItem("log", JSON.stringify(log));
+    localStorage.setItem("monitoredTasks", JSON.stringify(monitoredTasks));
+}
+
+// ===== Utilities for dates =====
+function toISO(d){ return new Date(d).toISOString(); }
+function fmtDate(dateStr) {
+    if (!dateStr) return "";
+    let d = new Date(dateStr);
+    if (isNaN(d)) return "";
+    return String(d.getMonth()+1).padStart(2,'0')+"/"+String(d.getDate()).padStart(2,'0');
+}
+function fmtDateYear(dateStr) {
+    if (!dateStr) return "";
+    let d = new Date(dateStr);
+    if (isNaN(d)) return "";
+    return String(d.getMonth()+1).padStart(2,'0')+"/"+String(d.getDate()).padStart(2,'0')+"/"+String(d.getFullYear()).slice(-2);
+}
+function pillColor(dateStr) {
+    if (!dateStr) return "#f0f0f0";
+    let d = new Date(dateStr);
+    if (isNaN(d)) return "#f0f0f0";
+    let diff = Math.floor((new Date()-d)/(1000*60*60*24));
+    if (diff === 0) return "#d4f8d4";
+    if (diff <= 6) {
+        let ratio = diff/6;
+        let r = Math.round(212 + (248-212)*ratio);
+        let g = Math.round(248 - (248-212)*ratio);
+        return `rgb(${r},${g},212)`;
+    }
+    return "#f8d4d4";
+}
+
+// ===== Monitored (Fish Tanks & Turfs) =====
+function addMonitoredFromInput(type) {
+    let inputId = type === "Fish Tank" ? "fishInput" : "turfInput";
+    let name = document.getElementById(inputId).value.trim();
+    if (!name) return;
+    let newTask = { id: Date.now(), name, type };
+    if (type === "Fish Tank") {
+        newTask.hasFish = false;
+        newTask.fishDate = ""; // date fish was added
+        newTask.filterDate = "";
+        newTask.waterDate = "";
+        newTask.cleanDate = "";
+        newTask.status = "Good";
+    } else {
+        newTask.cleanDate = "";
+    }
+    monitoredTasks.push(newTask);
+    document.getElementById(inputId).value = "";
+    renderMonitored();
+    saveData();
+}
+
+function renderMonitored() {
+    let fishList = document.getElementById("fishTankList");
+    let turfList = document.getElementById("turfList");
+    fishList.innerHTML = "";
+    turfList.innerHTML = "";
+    let fishTanks = monitoredTasks.filter(m => m.type === "Fish Tank").sort((a,b)=>a.name.localeCompare(b.name));
+    let turfs = monitoredTasks.filter(m => m.type === "Turf").sort((a,b)=>a.name.localeCompare(b.name));
+
+    fishTanks.forEach(task => {
+        let row = document.createElement("div");
+        row.className = "monitored-row";
+        row.innerHTML = `
+            <span class="monitored-name">${task.name}</span>
+            🐟<input type="checkbox" ${task.hasFish?"checked":""} onchange="updateMonitored(${task.id},'hasFish',this.checked)">
+            ${fishPillHTML(task.id)}
+            ${pillHTML(task.id,'filterDate','Filter', true)}
+            ${pillHTML(task.id,'waterDate','Water', true)}
+            ${pillHTML(task.id,'cleanDate','Cleaned', true)}
+            <select onchange="updateMonitored(${task.id},'status',this.value)">
+                <option ${task.status==="Good"?"selected":""}>Good</option>
+                <option ${task.status==="Needs Cleaning"?"selected":""}>Needs Cleaning</option>
+                <option ${task.status==="Critical"?"selected":""}>Critical</option>
+            </select>
+            <button class="deleteBtn" onclick="deleteMonitored(${task.id})">X</button>
+        `;
+        fishList.appendChild(row);
+    });
+
+    turfs.forEach(task => {
+        let row = document.createElement("div");
+        row.className = "monitored-row";
+        row.innerHTML = `
+            <span class="monitored-name">${task.name}</span>
+            ${pillHTML(task.id,'cleanDate','Cleaned', true)}
+            <button class="deleteBtn" onclick="deleteMonitored(${task.id})">X</button>
+        `;
+        turfList.appendChild(row);
+    });
+}
+
+function pillHTML(id, field, label, clickable) {
+    let task = monitoredTasks.find(m => m.id === id);
+    let date = task[field];
+    let display = fmtDate(date);
+    let color = pillColor(date);
+    let cls = clickable ? 'pill' : 'pill noclick';
+    let handler = clickable ? `onclick=\"setToday(${id},'${field}')\"` : '';
+    return `<span class="${cls}" style="background:${color}" ${handler}>
+                <span class="label">${label}</span>
+                <span class="monitored-date">${display}</span>
+            </span>`;
+}
+
+function fishPillHTML(id) {
+    let task = monitoredTasks.find(m => m.id === id);
+    let date = task.fishDate;
+    let display = fmtDateYear(date);
+    let color = pillColor(date);
+    return `<span class="pill noclick" style="background:${color}">
+                <span class="label">Fish</span>
+                <span class="monitored-date">${display}</span>
+            </span>`;
+}
+
+function updateMonitored(id, field, value) {
+    let t = monitoredTasks.find(m => m.id === id);
+    if (!t) return;
+    t[field] = value;
+
+    // Special behavior for fish checkbox
+    if (field === 'hasFish') {
+        if (value) {
+            // set fish date and log entry
+            let now = new Date();
+            t.fishDate = now.toISOString();
+            let mmddyy = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${String(now.getFullYear()).toString().slice(-2)}`;
+            log.unshift({
+                date: new Date().toLocaleDateString(),
+                ts: now.toISOString(),
+                category: 'Fish Added',
+                subcategory: '',
+                task: `A fish was added to ${t.name} on ${mmddyy}`
+            });
+        } else {
+            // unchecked: log fish lost, then clear date
+            let now = new Date();
+            let mmddyy = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${String(now.getFullYear()).toString().slice(-2)}`;
+            log.unshift({
+                date: new Date().toLocaleDateString(),
+                ts: now.toISOString(),
+                category: 'Fish Lost',
+                subcategory: '',
+                task: `A fish was lost in ${t.name} on ${mmddyy}`
+            });
+            t.fishDate = "";
+        }
+        renderLog();
+    }
+
+    saveData();
+    renderMonitored();
+}
+
+function setToday(id, field) {
+    let t = monitoredTasks.find(m => m.id === id);
+    if (t) { t[field] = new Date().toISOString(); saveData(); renderMonitored(); }
+}
+
+function deleteMonitored(id) {
+    monitoredTasks = monitoredTasks.filter(m => m.id !== id);
+    saveData();
+    renderMonitored();
+}
+
+// ===== Task Tracker core =====
+function updateDatalists() {
+    const categoryList = document.getElementById("categoryList");
+    categoryList.innerHTML = "";
+    Object.keys(tasks).forEach(cat => {
+        let option = document.createElement("option");
+        option.value = cat;
+        categoryList.appendChild(option);
+    });
+    const subcatList = document.getElementById("subcategoryList");
+    subcatList.innerHTML = "";
+    Object.keys(tasks).forEach(cat => {
+        Object.keys(tasks[cat]).forEach(sub => {
+            if (sub !== "_tasks") {
+                let option = document.createElement("option");
+                option.value = sub;
+                subcatList.appendChild(option);
+            }
+        });
+    });
+}
+
+function renderLists() {
+    renderPermanentTasks();
+    renderTodaysTasks();
+    renderLog();
+    updateDatalists();
+    saveData();
+}
+
+function renderPermanentTasks() {
+    let container = document.getElementById("permanentList");
+    container.innerHTML = "";
+    Object.keys(tasks).forEach(category => {
+        let catDiv = document.createElement("div");
+        catDiv.className = "category";
+        catDiv.innerHTML = `<span>${category}</span> 
+            <div>
+                <button class="completeBtn" style="padding:2px 5px;" onclick="event.stopPropagation(); addCategoryToToday('${category}')">+</button>
+                <button class="deleteBtn" onclick="event.stopPropagation(); deleteCategory('${category}')">X</button>
+            </div>`;
+        catDiv.onclick = () => toggleCategory(container, category, tasks, false);
+        container.appendChild(catDiv);
+        if (expandedCategory === category) renderCategoryContent(container, category, tasks, false);
+    });
+}
+
+function renderTodaysTasks() {
+    let container = document.getElementById("todaysList");
+    container.innerHTML = "";
+    Object.keys(todaysTasks).forEach(category => {
+        let catDiv = document.createElement("div");
+        catDiv.className = "category";
+        catDiv.innerHTML = `<span>${category}</span>
+            <button class="deleteBtn" onclick="event.stopPropagation(); deleteTodayCategory('${category}')">X</button>`;
+        catDiv.onclick = () => toggleCategory(container, category, todaysTasks, true);
+        container.appendChild(catDiv);
+        if (expandedTodayCategory === category) renderCategoryContent(container, category, todaysTasks, true);
+    });
+}
+
+function renderCategoryContent(container, category, source, isToday) {
+    let catData = source[category];
+    let subContainer = document.createElement("div");
+    if (catData._tasks) {
+        catData._tasks.forEach(task => {
+            let taskDiv = document.createElement("div");
+            taskDiv.className = "task";
+            taskDiv.innerHTML = `${task} ${isToday?`<button class=\"completeBtn\" onclick=\"completeTask('${category}','', '${task}', true)\">✔</button>`:""} <button class="deleteBtn" onclick="deleteTask('${category}','', '${task}', ${isToday})">X</button>`;
+            subContainer.appendChild(taskDiv);
+        });
+    }
+    Object.keys(catData).forEach(sub => {
+        if (sub !== "_tasks") {
+            let subWrapper = document.createElement("div");
+            let subDiv = document.createElement("div");
+            subDiv.className = "subcategory";
+            subDiv.textContent = sub;
+            subDiv.onclick = (e) => { e.stopPropagation(); toggleSubcategory(subWrapper, category, sub, source, isToday); };
+            subWrapper.appendChild(subDiv);
+            if ((!isToday && expandedSubcategory === sub && expandedCategory === category) || (isToday && expandedTodaySubcategory === sub && expandedTodayCategory === category)) {
+                renderSubcategoryContent(subWrapper, category, sub, source, isToday);
+            }
+            subContainer.appendChild(subWrapper);
+        }
+    });
+    container.appendChild(subContainer);
+}
+
+function renderSubcategoryContent(wrapper, category, sub, source, isToday) {
+    let subData = source[category][sub];
+    let taskList = document.createElement("div");
+    subData.forEach(task => {
+        let taskDiv = document.createElement("div");
+        taskDiv.className = "task";
+        taskDiv.innerHTML = `${task} ${isToday?`<button class=\"completeBtn\" onclick=\"completeTask('${category}','${sub}', '${task}', true)\">✔</button>`:""} <button class="deleteBtn" onclick="deleteTask('${category}','${sub}', '${task}', ${isToday})">X</button>`;
+        taskList.appendChild(taskDiv);
+    });
+    wrapper.appendChild(taskList);
+}
+
+function toggleCategory(container, category, source, isToday) {
+    if (isToday) { expandedTodayCategory = expandedTodayCategory === category ? null : category; expandedTodaySubcategory = null; }
+    else { expandedCategory = expandedCategory === category ? null : category; expandedSubcategory = null; }
+    renderLists();
+}
+
+function toggleSubcategory(wrapper, category, sub, source, isToday) {
+    if (isToday) expandedTodaySubcategory = expandedTodaySubcategory === sub ? null : sub;
+    else expandedSubcategory = expandedSubcategory === sub ? null : sub;
+    renderLists();
+}
+
+function addCategoryToToday(category) {
+    if (!todaysTasks[category]) todaysTasks[category] = { _tasks: [] };
+    if (tasks[category]._tasks) tasks[category]._tasks.forEach(t => { if (!todaysTasks[category]._tasks.includes(t)) todaysTasks[category]._tasks.push(t); });
+    Object.keys(tasks[category]).forEach(sub => {
+        if (sub !== "_tasks") {
+            if (!todaysTasks[category][sub]) todaysTasks[category][sub] = [];
+            tasks[category][sub].forEach(t => { if (!todaysTasks[category][sub].includes(t)) todaysTasks[category][sub].push(t); });
+        }
+    });
+    saveData(); renderLists();
+}
+
+function completeTask(category, subcategory, task, isToday) {
+    const now = new Date();
+    log.unshift({ date: now.toLocaleDateString(), ts: now.toISOString(), category, subcategory: subcategory || "", task });
+    if (subcategory) {
+        todaysTasks[category][subcategory] = todaysTasks[category][subcategory].filter(t => t !== task);
+        if (!todaysTasks[category][subcategory].length) delete todaysTasks[category][subcategory];
+    } else {
+        todaysTasks[category]._tasks = todaysTasks[category]._tasks.filter(t => t !== task);
+    }
+    if (!todaysTasks[category]._tasks?.length && Object.keys(todaysTasks[category]).length === 1) delete todaysTasks[category];
+    saveData(); 
+    renderLists();
+}
+
+function deleteTask(category, subcategory, task, isToday) {
+    if (isToday) {
+        if (subcategory) { 
+            todaysTasks[category][subcategory] = todaysTasks[category][subcategory].filter(t => t !== task); 
+            if (!todaysTasks[category][subcategory].length) delete todaysTasks[category][subcategory]; 
+        } else { 
+            todaysTasks[category]._tasks = todaysTasks[category]._tasks.filter(t => t !== task); 
+        }
+        if (!todaysTasks[category]._tasks?.length && Object.keys(todaysTasks[category]).length === 1) delete todaysTasks[category];
+    } else {
+        if (subcategory) { 
+            tasks[category][subcategory] = tasks[category][subcategory].filter(t => t !== task); 
+            if (!tasks[category][subcategory].length) delete tasks[category][subcategory]; 
+        } else { 
+            tasks[category]._tasks = tasks[category]._tasks.filter(t => t !== task); 
+        }
+        if (!tasks[category]._tasks?.length && Object.keys(tasks[category]).length === 1) delete tasks[category];
+    }
+    saveData();
+    renderLists();
+}
+
+function renderLog() {
+    let logList = document.getElementById("logList");
+    if (!logList) return;
+    logList.innerHTML = "";
+    log.forEach((entry, i) => {
+        let li = document.createElement("li");
+        li.innerHTML = `${entry.date} - ${entry.category} ${entry.subcategory ? " > " + entry.subcategory : ""} : ${entry.task} <button class="deleteBtn" onclick="deleteLog(${i})">X</button>`;
+        logList.appendChild(li);
+    });
+}
+
+function deleteLog(index) { 
+    log.splice(index, 1); 
+    saveData(); 
+    renderLists(); 
+}
+
+function deleteCategory(category) { 
+    if (confirm(`Delete category "${category}" and all its tasks?`)) { 
+        delete tasks[category]; 
+        if (todaysTasks[category]) delete todaysTasks[category]; 
+        saveData(); 
+        renderLists(); 
+    } 
+}
+
+function deleteTodayCategory(category) { 
+    if (confirm(`Remove "${category}" from today's tasks?`)) { 
+        delete todaysTasks[category]; 
+        saveData(); 
+        renderLists(); 
+    } 
+}
+
+function addTaskRow() { 
+    let c = document.getElementById("tasksContainer"); 
+    let d = document.createElement("div"); 
+    d.className = "batchItem"; 
+    d.innerHTML = `<input type=\"text\" class=\"taskName\" placeholder=\"Task Name\"> <button type=\"button\" class=\"removeBtn\" onclick=\"this.parentElement.remove()\">❌</button>`; 
+    c.appendChild(d); 
+}
+
+function addSubcatRow() { 
+    let c = document.getElementById("subcatsContainer"); 
+    let d = document.createElement("div"); 
+    d.className = "batchItem"; 
+    d.innerHTML = `<input type=\"text\" class=\"taskSubcategory\" placeholder=\"Subcategory\" list=\"subcategoryList\"> <button type=\"button\" class=\"removeBtn\" onclick=\"this.parentElement.remove()\">❌</button>`; 
+    c.appendChild(d); 
+}
+
+function submitBatch() {
+    let category = document.getElementById("batchCategory").value.trim();
+    if (!category) return alert("Category required");
+    let taskInputs = [...document.querySelectorAll(".taskName")].map(i => i.value.trim()).filter(Boolean);
+    let subcatInputs = [...document.querySelectorAll(".taskSubcategory")].map(i => i.value.trim()).filter(Boolean);
+    if (!taskInputs.length) return alert("At least one task required");
+    if (!tasks[category]) tasks[category] = { _tasks: [] };
+    if (!subcatInputs.length) {
+        taskInputs.forEach(task => { if (!tasks[category]._tasks.includes(task)) tasks[category]._tasks.push(task); });
+    } else {
+        subcatInputs.forEach(subcat => {
+            if (!tasks[category][subcat]) tasks[category][subcat] = [];
+            taskInputs.forEach(task => { if (!tasks[category][subcat].includes(task)) tasks[category][subcat].push(task); });
+        });
+    }
+    document.getElementById("tasksContainer").innerHTML = `<div class=\"batchItem\">\n        <input type=\"text\" class=\"taskName\" placeholder=\"Task Name\">\n        <button type=\"button\" class=\"addRowBtn\" onclick=\"addTaskRow()\">+</button>\n    </div>`;
+    document.getElementById("subcatsContainer").innerHTML = `<div class=\"batchItem\">\n        <input type=\"text\" class=\"taskSubcategory\" placeholder=\"Subcategory\" list=\"subcategoryList\">\n        <button type=\"button\" class=\"addRowBtn\" onclick=\"addSubcatRow()\">+</button>\n    </div>`;
+    saveData(); 
+    renderLists();
+}
+
+// ===== Export / Import / Print =====
+function exportSession(){
+  const payload = { tasks, todaysTasks, log, monitoredTasks, exportedAt: new Date().toISOString(), version: 2 };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  const ts = new Date();
+  const y = ts.getFullYear();
+  const m = String(ts.getMonth()+1).padStart(2,'0');
+  const d = String(ts.getDate()).padStart(2,'0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `task-tracker-session-${y}-${m}-${d}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function importSession(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if(!confirm('Replace current data with the loaded session?')) return;
+      if(data.tasks) tasks = data.tasks; else tasks = {};
+      if(data.todaysTasks) todaysTasks = data.todaysTasks; else todaysTasks = {};
+      if(data.log) log = data.log; else log = [];
+      if(data.monitoredTasks) monitoredTasks = data.monitoredTasks; else monitoredTasks = [];
+      saveData();
+      renderLists();
+      renderMonitored();
+      alert('Session loaded.');
+    } catch(e){
+      alert('Failed to load: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function printLogByDate(){
+  const fromVal = document.getElementById('printFrom').value; // yyyy-mm-dd or ''
+  const toVal = document.getElementById('printTo').value;
+  const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+  const to = toVal ? new Date(toVal + 'T23:59:59') : null;
+
+  // Normalize entries to have a comparable timestamp
+  const entries = log.map(e => ({
+    ...e,
+    _ts: e.ts ? new Date(e.ts) : (isNaN(new Date(e.date)) ? null : new Date(e.date))
+  })).filter(e => e._ts);
+
+  const filtered = entries.filter(e => {
+    if(from && e._ts < from) return false;
+    if(to && e._ts > to) return false;
+    return true;
+  });
+
+  // Build printable window
+  const win = window.open('', '_blank');
+  const style = `body{font-family:Arial,sans-serif;margin:20px;} h2{margin:0 0 10px} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:6px;text-align:left;} th{background:#f5f5f5;}`;
+  const rangeTxt = `${fromVal || '—'} to ${toVal || '—'}`;
+  const rows = filtered.map(e => `<tr><td>${e.date || ''}</td><td>${e.category || ''}</td><td>${e.subcategory || ''}</td><td>${e.task || ''}</td></tr>`).join('');
+  win.document.write(`<!DOCTYPE html><html><head><title>Completed Log</title><style>${style}</style></head><body>`+
+    `<h2>Completed Log (${rangeTxt})</h2>`+
+    `<table><thead><tr><th>Date</th><th>Category</th><th>Subcategory</th><th>Task</th></tr></thead><tbody>${rows}</tbody></table>`+
+    `</body></html>`);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+/* ==== CLOUD SYNC (Firebase) ==== */
+window.addEventListener('DOMContentLoaded', () => {
+  const fb = window.__firebase;
+  if (!fb) return; // if firebase not loaded, skip
+
+  const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, doc, getDoc, setDoc, serverTimestamp } = fb;
+
+  const $login  = document.getElementById('loginBtn');
+  const $logout = document.getElementById('logoutBtn');
+  const $user   = document.getElementById('userInfo');
+  const $sync   = document.getElementById('syncStatus');
+
+  let saveTimer = null;
+  function markSync(msg) { if ($sync) $sync.textContent = msg; }
+
+  async function cloudLoad(uid) {
+    try {
+      const ref = doc(db, 'taskTracker', uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        tasks          = data.tasks          || {};
+        todaysTasks    = data.todaysTasks    || {};
+        log            = data.log            || [];
+        monitoredTasks = data.monitoredTasks || [];
+        if (typeof renderLists === 'function') renderLists();
+        if (typeof renderMonitored === 'function') renderMonitored();
+        markSync('Loaded from cloud ✓');
+      } else {
+        markSync('No cloud data yet');
+      }
+    } catch (e) {
+      console.error(e);
+      markSync('Cloud load failed (using local)');
+    }
+  }
+
+  async function cloudSave(uid) {
+    try {
+      const ref = doc(db, 'taskTracker', uid);
+      await setDoc(ref, { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 2 }, { merge: true });
+      markSync('Saved ✓');
+    } catch (e) {
+      console.error(e);
+      markSync('Save failed (will retry)');
+    }
+  }
+
+  function cloudSaveDebounced(uid) {
+    if (!uid) return;
+    markSync('Saving…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => cloudSave(uid), 600);
+  }
+
+  // Patch existing saveData
+  if (typeof window.saveData === 'function') {
+    const _origSaveData = window.saveData;
+    window.saveData = function() {
+      _origSaveData();
+      const user = auth.currentUser;
+      if (user) cloudSaveDebounced(user.uid);
+    };
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      $user.textContent = `Signed in as ${user.displayName || user.email}`;
+      if ($login)  $login.style.display  = 'none';
+      if ($logout) $logout.style.display = 'inline-block';
+      await cloudLoad(user.uid);
+      cloudSaveDebounced(user.uid);
+    } else {
+      if ($user) $user.textContent = '';
+      if ($login)  $login.style.display  = 'inline-block';
+      if ($logout) $logout.style.display = 'none';
+      markSync('Signed out (local only)');
+    }
+  });
+
+  $login?.addEventListener('click', async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (e) { alert('Sign-in failed: ' + e.message); }
+  });
+  $logout?.addEventListener('click', async () => { await signOut(auth); });
+});
+
+// Initial render
+renderLists();
+renderMonitored();
+</script>
+</body>
+</html>
