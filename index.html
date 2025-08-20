@@ -87,7 +87,6 @@ button.completeBtn { background: green; color: white; border: none; padding: 2px
   };
 </script>
 
-
 <h1>Task Tracker</h1>
 
 <!-- Auth bar -->
@@ -98,20 +97,28 @@ button.completeBtn { background: green; color: white; border: none; padding: 2px
   <span id="syncStatus" style="font-size:12px; opacity:.8;"></span>
 </div>
 
-
-<!-- Toolbar: Print + Export/Import -->
+<!-- Toolbar: Session + Print + Export/Import -->
 <div id="toolbar">
+  <div class="group">
+    <strong>Location Session:</strong>
+    <select id="sessionSelect" title="Choose location/session"></select>
+    <button class="secondary" id="newSessionBtn">New</button>
+    <button class="secondary" id="renameSessionBtn">Rename</button>
+    <button class="danger"    id="deleteSessionBtn">Delete</button>
+  </div>
+
   <div class="group">
     <strong>Print Completed Log by Date:</strong>
     <label>From <input type="date" id="printFrom"></label>
     <label>To <input type="date" id="printTo"></label>
     <button onclick="printLogByDate()">Print Filtered Log</button>
   </div>
+
   <div class="group">
-    <strong>Session:</strong>
-    <button class="secondary" onclick="exportSession()">Download Session (.json)</button>
+    <strong>Session Data:</strong>
+    <button class="secondary" onclick="exportSession()">Download (.json)</button>
     <input id="importFile" type="file" accept="application/json" class="hidden" onchange="importSession(this.files[0])">
-    <button class="secondary" onclick="document.getElementById('importFile').click()">Load Session</button>
+    <button class="secondary" onclick="document.getElementById('importFile').click()">Load</button>
   </div>
 </div>
 
@@ -185,18 +192,31 @@ button.completeBtn { background: green; color: white; border: none; padding: 2px
 </div>
 
 <script>
-// ===== Data =====
-let tasks = JSON.parse(localStorage.getItem("tasks")) || {};
-let todaysTasks = JSON.parse(localStorage.getItem("todaysTasks")) || {};
-let log = JSON.parse(localStorage.getItem("log")) || [];
-let monitoredTasks = JSON.parse(localStorage.getItem("monitoredTasks")) || [];
+// ===== Session-scoped data =====
+let currentSessionId = localStorage.getItem("activeSessionId") || "Default";
+let sessionList = JSON.parse(localStorage.getItem("sessionList")) || ["Default"];
+
+let tasks = {};
+let todaysTasks = {};
+let log = [];
+let monitoredTasks = [];
 let expandedCategory = null, expandedSubcategory = null, expandedTodayCategory = null, expandedTodaySubcategory = null;
 
+// ---- LocalStorage helpers (namespaced by session) ----
+function lsKey(name, sid = currentSessionId) { return `${sid}::${name}`; }
+
+function loadFromLocal(sessionId = currentSessionId) {
+  tasks          = JSON.parse(localStorage.getItem(lsKey("tasks", sessionId))) || {};
+  todaysTasks    = JSON.parse(localStorage.getItem(lsKey("todaysTasks", sessionId))) || {};
+  log            = JSON.parse(localStorage.getItem(lsKey("log", sessionId))) || [];
+  monitoredTasks = JSON.parse(localStorage.getItem(lsKey("monitoredTasks", sessionId))) || [];
+}
+
 function saveData() {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-    localStorage.setItem("todaysTasks", JSON.stringify(todaysTasks));
-    localStorage.setItem("log", JSON.stringify(log));
-    localStorage.setItem("monitoredTasks", JSON.stringify(monitoredTasks));
+  localStorage.setItem(lsKey("tasks"), JSON.stringify(tasks));
+  localStorage.setItem(lsKey("todaysTasks"), JSON.stringify(todaysTasks));
+  localStorage.setItem(lsKey("log"), JSON.stringify(log));
+  localStorage.setItem(lsKey("monitoredTasks"), JSON.stringify(monitoredTasks));
 }
 
 // ===== Utilities for dates =====
@@ -236,7 +256,7 @@ function addMonitoredFromInput(type) {
     let newTask = { id: Date.now(), name, type };
     if (type === "Fish Tank") {
         newTask.hasFish = false;
-        newTask.fishDate = ""; // date fish was added
+        newTask.fishDate = "";
         newTask.filterDate = "";
         newTask.waterDate = "";
         newTask.cleanDate = "";
@@ -319,31 +339,14 @@ function updateMonitored(id, field, value) {
     if (!t) return;
     t[field] = value;
 
-    // Special behavior for fish checkbox
     if (field === 'hasFish') {
+        let now = new Date();
+        let mmddyy = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${String(now.getFullYear()).toString().slice(-2)}`;
         if (value) {
-            // set fish date and log entry
-            let now = new Date();
             t.fishDate = now.toISOString();
-            let mmddyy = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${String(now.getFullYear()).toString().slice(-2)}`;
-            log.unshift({
-                date: new Date().toLocaleDateString(),
-                ts: now.toISOString(),
-                category: 'Fish Added',
-                subcategory: '',
-                task: `A fish was added to ${t.name} on ${mmddyy}`
-            });
+            log.unshift({ date: now.toLocaleDateString(), ts: now.toISOString(), category: 'Fish Added', subcategory: '', task: `A fish was added to ${t.name} on ${mmddyy}` });
         } else {
-            // unchecked: log fish lost, then clear date
-            let now = new Date();
-            let mmddyy = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${String(now.getFullYear()).toString().slice(-2)}`;
-            log.unshift({
-                date: new Date().toLocaleDateString(),
-                ts: now.toISOString(),
-                category: 'Fish Lost',
-                subcategory: '',
-                task: `A fish was lost in ${t.name} on ${mmddyy}`
-            });
+            log.unshift({ date: now.toLocaleDateString(), ts: now.toISOString(), category: 'Fish Lost', subcategory: '', task: `A fish was lost in ${t.name} on ${mmddyy}` });
             t.fishDate = "";
         }
         renderLog();
@@ -563,7 +566,7 @@ function addTaskRow() {
     let c = document.getElementById("tasksContainer"); 
     let d = document.createElement("div"); 
     d.className = "batchItem"; 
-    d.innerHTML = `<input type=\"text\" class=\"taskName\" placeholder=\"Task Name\"> <button type=\"button\" class=\"removeBtn\" onclick=\"this.parentElement.remove()\">❌</button>`; 
+    d.innerHTML = `<input type="text" class="taskName" placeholder="Task Name"> <button type="button" class="removeBtn" onclick="this.parentElement.remove()">❌</button>`; 
     c.appendChild(d); 
 }
 
@@ -571,7 +574,7 @@ function addSubcatRow() {
     let c = document.getElementById("subcatsContainer"); 
     let d = document.createElement("div"); 
     d.className = "batchItem"; 
-    d.innerHTML = `<input type=\"text\" class=\"taskSubcategory\" placeholder=\"Subcategory\" list=\"subcategoryList\"> <button type=\"button\" class=\"removeBtn\" onclick=\"this.parentElement.remove()\">❌</button>`; 
+    d.innerHTML = `<input type="text" class="taskSubcategory" placeholder="Subcategory" list="subcategoryList"> <button type="button" class="removeBtn" onclick="this.parentElement.remove()">❌</button>`; 
     c.appendChild(d); 
 }
 
@@ -590,15 +593,21 @@ function submitBatch() {
             taskInputs.forEach(task => { if (!tasks[category][subcat].includes(task)) tasks[category][subcat].push(task); });
         });
     }
-    document.getElementById("tasksContainer").innerHTML = `<div class=\"batchItem\">\n        <input type=\"text\" class=\"taskName\" placeholder=\"Task Name\">\n        <button type=\"button\" class=\"addRowBtn\" onclick=\"addTaskRow()\">+</button>\n    </div>`;
-    document.getElementById("subcatsContainer").innerHTML = `<div class=\"batchItem\">\n        <input type=\"text\" class=\"taskSubcategory\" placeholder=\"Subcategory\" list=\"subcategoryList\">\n        <button type=\"button\" class=\"addRowBtn\" onclick=\"addSubcatRow()\">+</button>\n    </div>`;
+    document.getElementById("tasksContainer").innerHTML = `<div class="batchItem">
+        <input type="text" class="taskName" placeholder="Task Name">
+        <button type="button" class="addRowBtn" onclick="addTaskRow()">+</button>
+    </div>`;
+    document.getElementById("subcatsContainer").innerHTML = `<div class="batchItem">
+        <input type="text" class="taskSubcategory" placeholder="Subcategory" list="subcategoryList">
+        <button type="button" class="addRowBtn" onclick="addSubcatRow()">+</button>
+    </div>`;
     saveData(); 
     renderLists();
 }
 
-// ===== Export / Import / Print =====
+// ===== Export / Import / Print (current session only) =====
 function exportSession(){
-  const payload = { tasks, todaysTasks, log, monitoredTasks, exportedAt: new Date().toISOString(), version: 2 };
+  const payload = { sessionId: currentSessionId, tasks, todaysTasks, log, monitoredTasks, exportedAt: new Date().toISOString(), version: 3 };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   const ts = new Date();
@@ -606,7 +615,7 @@ function exportSession(){
   const m = String(ts.getMonth()+1).padStart(2,'0');
   const d = String(ts.getDate()).padStart(2,'0');
   a.href = URL.createObjectURL(blob);
-  a.download = `task-tracker-session-${y}-${m}-${d}.json`;
+  a.download = `task-tracker-${currentSessionId}-${y}-${m}-${d}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -618,15 +627,17 @@ function importSession(file){
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if(!confirm('Replace current data with the loaded session?')) return;
-      if(data.tasks) tasks = data.tasks; else tasks = {};
-      if(data.todaysTasks) todaysTasks = data.todaysTasks; else todaysTasks = {};
-      if(data.log) log = data.log; else log = [];
-      if(data.monitoredTasks) monitoredTasks = data.monitoredTasks; else monitoredTasks = [];
+      if(!confirm(`Replace current "${currentSessionId}" data with the loaded session file?`)) return;
+      tasks          = data.tasks || {};
+      todaysTasks    = data.todaysTasks || {};
+      log            = data.log || [];
+      monitoredTasks = data.monitoredTasks || [];
       saveData();
       renderLists();
       renderMonitored();
-      alert('Session loaded.');
+      alert('Session loaded into current location.');
+      // ensure cloud save
+      cloudSaveDebounced(window.__activeUid);
     } catch(e){
       alert('Failed to load: ' + e.message);
     }
@@ -635,12 +646,11 @@ function importSession(file){
 }
 
 function printLogByDate(){
-  const fromVal = document.getElementById('printFrom').value; // yyyy-mm-dd or ''
+  const fromVal = document.getElementById('printFrom').value;
   const toVal = document.getElementById('printTo').value;
   const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
   const to = toVal ? new Date(toVal + 'T23:59:59') : null;
 
-  // Normalize entries to have a comparable timestamp
   const entries = log.map(e => ({
     ...e,
     _ts: e.ts ? new Date(e.ts) : (isNaN(new Date(e.date)) ? null : new Date(e.date))
@@ -652,13 +662,12 @@ function printLogByDate(){
     return true;
   });
 
-  // Build printable window
   const win = window.open('', '_blank');
   const style = `body{font-family:Arial,sans-serif;margin:20px;} h2{margin:0 0 10px} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:6px;text-align:left;} th{background:#f5f5f5;}`;
-  const rangeTxt = `${fromVal || '—'} to ${toVal || '—'}`;
+  const rangeTxt = `${fromVal || '—'} to ${toVal || '—'} (Session: ${currentSessionId})`;
   const rows = filtered.map(e => `<tr><td>${e.date || ''}</td><td>${e.category || ''}</td><td>${e.subcategory || ''}</td><td>${e.task || ''}</td></tr>`).join('');
   win.document.write(`<!DOCTYPE html><html><head><title>Completed Log</title><style>${style}</style></head><body>`+
-    `<h2>Completed Log (${rangeTxt})</h2>`+
+    `<h2>Completed Log ${rangeTxt}</h2>`+
     `<table><thead><tr><th>Date</th><th>Category</th><th>Subcategory</th><th>Task</th></tr></thead><tbody>${rows}</tbody></table>`+
     `</body></html>`);
   win.document.close();
@@ -666,24 +675,59 @@ function printLogByDate(){
   win.print();
 }
 
-/* ==== CLOUD SYNC (Firebase) ==== */
-window.addEventListener('DOMContentLoaded', () => {
+/* ==== CLOUD SYNC (Firebase) with multi-sessions ==== */
+const fbInit = () => {
   const fb = window.__firebase;
-  if (!fb) return; // if firebase not loaded, skip
+  if (!fb) return;
 
   const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, doc, getDoc, setDoc, serverTimestamp } = fb;
-
   const $login  = document.getElementById('loginBtn');
   const $logout = document.getElementById('logoutBtn');
   const $user   = document.getElementById('userInfo');
   const $sync   = document.getElementById('syncStatus');
+  const $sel    = document.getElementById('sessionSelect');
+  const $newBtn = document.getElementById('newSessionBtn');
+  const $renBtn = document.getElementById('renameSessionBtn');
+  const $delBtn = document.getElementById('deleteSessionBtn');
 
   let saveTimer = null;
   function markSync(msg) { if ($sync) $sync.textContent = msg; }
 
-  async function cloudLoad(uid) {
+  async function loadMeta(uid) {
+    const ref = doc(db, 'users', uid, 'meta', 'meta');
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data();
+      sessionList = Array.isArray(data.sessions) && data.sessions.length ? data.sessions : ["Default"];
+      currentSessionId = data.active || currentSessionId || "Default";
+    } else {
+      sessionList = sessionList && sessionList.length ? sessionList : ["Default"];
+      await setDoc(ref, { sessions: sessionList, active: currentSessionId, updatedAt: serverTimestamp() }, { merge: true });
+    }
+    renderSessionSelect();
+    localStorage.setItem("sessionList", JSON.stringify(sessionList));
+    localStorage.setItem("activeSessionId", currentSessionId);
+  }
+
+  async function saveMeta(uid) {
+    const ref = doc(db, 'users', uid, 'meta', 'meta');
+    await setDoc(ref, { sessions: sessionList, active: currentSessionId, updatedAt: serverTimestamp() }, { merge: true });
+  }
+
+  function renderSessionSelect() {
+    $sel.innerHTML = "";
+    sessionList.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (s === currentSessionId) opt.selected = true;
+      $sel.appendChild(opt);
+    });
+  }
+
+  async function cloudLoad(uid, sessionId) {
     try {
-      const ref = doc(db, 'taskTracker', uid);
+      const ref = doc(db, 'users', uid, 'sessions', sessionId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data();
@@ -691,23 +735,32 @@ window.addEventListener('DOMContentLoaded', () => {
         todaysTasks    = data.todaysTasks    || {};
         log            = data.log            || [];
         monitoredTasks = data.monitoredTasks || [];
-        if (typeof renderLists === 'function') renderLists();
-        if (typeof renderMonitored === 'function') renderMonitored();
-        markSync('Loaded from cloud ✓');
+        // also mirror to local
+        saveData();
+        renderLists();
+        renderMonitored();
+        markSync(`Loaded "${sessionId}" from cloud ✓`);
       } else {
-        markSync('No cloud data yet');
+        // If session doc doesn't exist, start blank but keep local if any
+        loadFromLocal(sessionId);
+        renderLists();
+        renderMonitored();
+        markSync(`Started new "${sessionId}" (no cloud yet)`);
       }
     } catch (e) {
       console.error(e);
       markSync('Cloud load failed (using local)');
+      loadFromLocal(sessionId);
+      renderLists();
+      renderMonitored();
     }
   }
 
-  async function cloudSave(uid) {
+  async function cloudSave(uid, sessionId) {
     try {
-      const ref = doc(db, 'taskTracker', uid);
-      await setDoc(ref, { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 2 }, { merge: true });
-      markSync('Saved ✓');
+      const ref = doc(db, 'users', uid, 'sessions', sessionId);
+      await setDoc(ref, { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 3 }, { merge: true });
+      markSync(`Saved "${sessionId}" ✓`);
     } catch (e) {
       console.error(e);
       markSync('Save failed (will retry)');
@@ -718,10 +771,10 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!uid) return;
     markSync('Saving…');
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => cloudSave(uid), 600);
+    saveTimer = setTimeout(() => cloudSave(uid, currentSessionId), 600);
   }
 
-  // Patch existing saveData
+  // Patch saveData to also cloud-save current session
   if (typeof window.saveData === 'function') {
     const _origSaveData = window.saveData;
     window.saveData = function() {
@@ -731,18 +784,135 @@ window.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // Session actions
+  $sel.addEventListener('change', async (e) => {
+    const next = e.target.value;
+    if (!next) return;
+    currentSessionId = next;
+    localStorage.setItem("activeSessionId", currentSessionId);
+    renderSessionSelect();
+    // load local immediately for snappy UI, then cloud
+    loadFromLocal(currentSessionId);
+    renderLists();
+    renderMonitored();
+    if (auth.currentUser) {
+      await cloudLoad(auth.currentUser.uid, currentSessionId);
+      await saveMeta(auth.currentUser.uid);
+    }
+  });
+
+  $newBtn.addEventListener('click', async () => {
+    let name = prompt("New session/location name:", "");
+    if (!name) return;
+    name = name.trim();
+    if (!name) return;
+    if (sessionList.includes(name)) { alert("That session already exists."); return; }
+    sessionList.push(name);
+    currentSessionId = name;
+    // start blank
+    tasks = {}; todaysTasks = {}; log = []; monitoredTasks = [];
+    saveData();
+    renderSessionSelect();
+    renderLists();
+    renderMonitored();
+    localStorage.setItem("sessionList", JSON.stringify(sessionList));
+    localStorage.setItem("activeSessionId", currentSessionId);
+    if (auth.currentUser) {
+      await saveMeta(auth.currentUser.uid);
+      cloudSaveDebounced(auth.currentUser.uid);
+    }
+  });
+
+  $renBtn.addEventListener('click', async () => {
+    const oldName = currentSessionId;
+    const next = prompt(`Rename session "${oldName}" to:`, oldName);
+    if (!next || next === oldName) return;
+    const newName = next.trim();
+    if (!newName) return;
+    if (sessionList.includes(newName)) { alert("A session with that name already exists."); return; }
+
+    // Move localStorage namespace
+    const oldTasks          = localStorage.getItem(lsKey("tasks", oldName));
+    const oldTodaysTasks    = localStorage.getItem(lsKey("todaysTasks", oldName));
+    const oldLog            = localStorage.getItem(lsKey("log", oldName));
+    const oldMonitoredTasks = localStorage.getItem(lsKey("monitoredTasks", oldName));
+    if (oldTasks !== null) localStorage.setItem(`${newName}::tasks`, oldTasks);
+    if (oldTodaysTasks !== null) localStorage.setItem(`${newName}::todaysTasks`, oldTodaysTasks);
+    if (oldLog !== null) localStorage.setItem(`${newName}::log`, oldLog);
+    if (oldMonitoredTasks !== null) localStorage.setItem(`${newName}::monitoredTasks`, oldMonitoredTasks);
+    localStorage.removeItem(`${oldName}::tasks`);
+    localStorage.removeItem(`${oldName}::todaysTasks`);
+    localStorage.removeItem(`${oldName}::log`);
+    localStorage.removeItem(`${oldName}::monitoredTasks`);
+
+    // Update session list + active
+    sessionList = sessionList.map(s => s === oldName ? newName : s);
+    currentSessionId = newName;
+    localStorage.setItem("sessionList", JSON.stringify(sessionList));
+    localStorage.setItem("activeSessionId", currentSessionId);
+
+    // Reload UI
+    loadFromLocal(currentSessionId);
+    renderSessionSelect();
+    renderLists();
+    renderMonitored();
+
+    // Cloud: copy old doc to new doc (simple overwrite)
+    if (auth.currentUser) {
+      const uid = auth.currentUser.uid;
+      // read old
+      const oldRef = doc(db, 'users', uid, 'sessions', oldName);
+      const oldSnap = await getDoc(oldRef);
+      if (oldSnap.exists()) {
+        await setDoc(doc(db, 'users', uid, 'sessions', newName), oldSnap.data(), { merge: true });
+      } else {
+        await setDoc(doc(db, 'users', uid, 'sessions', newName), { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 3 }, { merge: true });
+      }
+      // (Optionally you could delete oldRef; keeping it avoids accidental data loss)
+      await saveMeta(uid);
+    }
+  });
+
+  $delBtn.addEventListener('click', async () => {
+    if (sessionList.length <= 1) { alert("You must keep at least one session."); return; }
+    if (!confirm(`Delete session "${currentSessionId}" locally? (Cloud copy will remain for safety.)`)) return;
+    // remove local data
+    localStorage.removeItem(lsKey("tasks"));
+    localStorage.removeItem(lsKey("todaysTasks"));
+    localStorage.removeItem(lsKey("log"));
+    localStorage.removeItem(lsKey("monitoredTasks"));
+    // update list / active
+    sessionList = sessionList.filter(s => s !== currentSessionId);
+    currentSessionId = sessionList[0];
+    localStorage.setItem("sessionList", JSON.stringify(sessionList));
+    localStorage.setItem("activeSessionId", currentSessionId);
+    renderSessionSelect();
+    loadFromLocal(currentSessionId);
+    renderLists();
+    renderMonitored();
+    if (auth.currentUser) await saveMeta(auth.currentUser.uid);
+  });
+
+  // Auth handling
   onAuthStateChanged(auth, async (user) => {
+    window.__activeUid = user ? user.uid : null;
     if (user) {
       $user.textContent = `Signed in as ${user.displayName || user.email}`;
-      if ($login)  $login.style.display  = 'none';
-      if ($logout) $logout.style.display = 'inline-block';
-      await cloudLoad(user.uid);
+      $login.style.display  = 'none';
+      $logout.style.display = 'inline-block';
+      await loadMeta(user.uid);
+      await cloudLoad(user.uid, currentSessionId);
       cloudSaveDebounced(user.uid);
     } else {
-      if ($user) $user.textContent = '';
-      if ($login)  $login.style.display  = 'inline-block';
-      if ($logout) $logout.style.display = 'none';
+      $user.textContent = '';
+      $login.style.display  = 'inline-block';
+      $logout.style.display = 'none';
       markSync('Signed out (local only)');
+      // fall back to local
+      renderSessionSelect();
+      loadFromLocal(currentSessionId);
+      renderLists();
+      renderMonitored();
     }
   });
 
@@ -753,11 +923,28 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (e) { alert('Sign-in failed: ' + e.message); }
   });
   $logout?.addEventListener('click', async () => { await signOut(auth); });
-});
+};
 
-// Initial render
-renderLists();
-renderMonitored();
+// Initial boot
+window.addEventListener('DOMContentLoaded', () => {
+  // prepare session select UI before auth to show immediately
+  const sel = document.getElementById('sessionSelect');
+  sel.innerHTML = "";
+  sessionList.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    if (s === currentSessionId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  // Load from local first for instant UI
+  loadFromLocal(currentSessionId);
+  renderLists();
+  renderMonitored();
+
+  // then wire Firebase
+  fbInit();
+});
 </script>
 </body>
 </html>
