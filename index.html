@@ -206,6 +206,12 @@ let expandedCategory = null, expandedSubcategory = null, expandedTodayCategory =
 // ---- LocalStorage helpers (namespaced by session) ----
 function lsKey(name, sid = currentSessionId) { return `${sid}::${name}`; }
 
+// ---- Local modified stamp ----
+function bumpLocalStamp() {
+  localStorage.setItem(lsKey("localUpdatedAt"), String(Date.now()));
+}
+
+// Load everything from local for a session
 function loadFromLocal(sessionId = currentSessionId) {
   tasks          = JSON.parse(localStorage.getItem(lsKey("tasks", sessionId))) || {};
   todaysTasks    = JSON.parse(localStorage.getItem(lsKey("todaysTasks", sessionId))) || {};
@@ -213,11 +219,26 @@ function loadFromLocal(sessionId = currentSessionId) {
   monitoredTasks = JSON.parse(localStorage.getItem(lsKey("monitoredTasks", sessionId))) || [];
 }
 
+// Save to local (and bump local stamp)
 function saveData() {
   localStorage.setItem(lsKey("tasks"), JSON.stringify(tasks));
   localStorage.setItem(lsKey("todaysTasks"), JSON.stringify(todaysTasks));
   localStorage.setItem(lsKey("log"), JSON.stringify(log));
   localStorage.setItem(lsKey("monitoredTasks"), JSON.stringify(monitoredTasks));
+  bumpLocalStamp();
+}
+
+// Strong persistence: write local immediately, then force a cloud write if signed in.
+async function persistNow() {
+  saveData();
+  const fb = window.__firebase;
+  if (fb?.auth?.currentUser) {
+    try {
+      await cloudSave(fb.auth.currentUser.uid, currentSessionId); // force, not debounced
+    } catch (e) {
+      console.error("Immediate cloud save failed:", e);
+    }
+  }
 }
 
 // ===== Utilities for dates =====
@@ -268,7 +289,7 @@ function addMonitoredFromInput(type) {
     monitoredTasks.push(newTask);
     document.getElementById(inputId).value = "";
     renderMonitored();
-    saveData();
+    persistNow();
 }
 
 function renderMonitored() {
@@ -355,18 +376,18 @@ function updateMonitored(id, field, value) {
         renderLog();
     }
 
-    saveData();
+    persistNow();
     renderMonitored();
 }
 
 function setToday(id, field) {
     let t = monitoredTasks.find(m => m.id === id);
-    if (t) { t[field] = new Date().toISOString(); saveData(); renderMonitored(); }
+    if (t) { t[field] = new Date().toISOString(); persistNow(); renderMonitored(); }
 }
 
 function deleteMonitored(id) {
     monitoredTasks = monitoredTasks.filter(m => m.id !== id);
-    saveData();
+    persistNow();
     renderMonitored();
 }
 
@@ -397,10 +418,10 @@ function renderLists() {
     renderTodaysTasks();
     renderLog();
     updateDatalists();
-    saveData();
+    // NOTE: no saveData() here—mutators call persistNow()
 }
 
-/* ---------- NEW: helper to create a task row safely (no inline onclick) ---------- */
+/* ---------- Safe task row (no inline onclick with user text) ---------- */
 function makeTaskRow(category, subcategory, task, isToday) {
   const row = document.createElement("div");
   row.className = "task";
@@ -565,7 +586,7 @@ function addCategoryToToday(category) {
             tasks[category][sub].forEach(t => { if (!todaysTasks[category][sub].includes(t)) todaysTasks[category][sub].push(t); });
         }
     });
-    saveData(); renderLists();
+    persistNow().then(renderLists);
 }
 
 function completeTask(category, subcategory, task, isToday) {
@@ -577,9 +598,8 @@ function completeTask(category, subcategory, task, isToday) {
     } else {
         todaysTasks[category]._tasks = todaysTasks[category]._tasks.filter(t => t !== task);
     }
-    if (!todaysTasks[category]._tasks?.length && Object.keys(todaysTasks[category]).length === 1) delete todaysTasks[category];
-    saveData(); 
-    renderLists();
+    if (!todaysTasks[category]?._tasks?.length && Object.keys(todaysTasks[category] || {}).length === 1) delete todaysTasks[category];
+    persistNow().then(renderLists);
 }
 
 function deleteTask(category, subcategory, task, isToday) {
@@ -590,7 +610,7 @@ function deleteTask(category, subcategory, task, isToday) {
         } else { 
             todaysTasks[category]._tasks = todaysTasks[category]._tasks.filter(t => t !== task); 
         }
-        if (!todaysTasks[category]._tasks?.length && Object.keys(todaysTasks[category]).length === 1) delete todaysTasks[category];
+        if (!todaysTasks[category]?._tasks?.length && Object.keys(todaysTasks[category] || {}).length === 1) delete todaysTasks[category];
     } else {
         if (subcategory) { 
             tasks[category][subcategory] = tasks[category][subcategory].filter(t => t !== task); 
@@ -598,10 +618,9 @@ function deleteTask(category, subcategory, task, isToday) {
         } else { 
             tasks[category]._tasks = tasks[category]._tasks.filter(t => t !== task); 
         }
-        if (!tasks[category]._tasks?.length && Object.keys(tasks[category]).length === 1) delete tasks[category];
+        if (!tasks[category]?._tasks?.length && Object.keys(tasks[category] || {}).length === 1) delete tasks[category];
     }
-    saveData();
-    renderLists();
+    persistNow().then(renderLists);
 }
 
 function renderLog() {
@@ -624,24 +643,21 @@ function renderLog() {
 
 function deleteLog(index) { 
     log.splice(index, 1); 
-    saveData(); 
-    renderLists(); 
+    persistNow().then(renderLists); 
 }
 
 function deleteCategory(category) { 
     if (confirm(`Delete category "${category}" and all its tasks?`)) { 
         delete tasks[category]; 
         if (todaysTasks[category]) delete todaysTasks[category]; 
-        saveData(); 
-        renderLists(); 
+        persistNow().then(renderLists); 
     } 
 }
 
 function deleteTodayCategory(category) { 
     if (confirm(`Remove "${category}" from today's tasks?`)) { 
         delete todaysTasks[category]; 
-        saveData(); 
-        renderLists(); 
+        persistNow().then(renderLists); 
     } 
 }
 
@@ -684,8 +700,7 @@ function submitBatch() {
         <input type="text" class="taskSubcategory" placeholder="Subcategory" list="subcategoryList">
         <button type="button" class="addRowBtn" onclick="addSubcatRow()">+</button>
     </div>`;
-    saveData(); 
-    renderLists();
+    persistNow().then(renderLists);
 }
 
 // ===== Export / Import / Print (current session only) =====
@@ -715,12 +730,11 @@ function importSession(file){
       todaysTasks    = data.todaysTasks || {};
       log            = data.log || [];
       monitoredTasks = data.monitoredTasks || [];
-      saveData();
-      renderLists();
-      renderMonitored();
-      alert('Session loaded into current location.');
-      // ensure cloud save
-      cloudSaveDebounced(window.__activeUid);
+      persistNow().then(() => {
+        renderLists();
+        renderMonitored();
+        alert('Session loaded into current location.');
+      });
     } catch(e){
       alert('Failed to load: ' + e.message);
     }
@@ -812,29 +826,55 @@ const fbInit = () => {
     try {
       const ref = doc(db, 'users', uid, 'sessions', sessionId);
       const snap = await getDoc(ref);
+
+      const localStamp = Number(localStorage.getItem(lsKey("localUpdatedAt"))) || 0;
+
       if (snap.exists()) {
         const data = snap.data();
-        tasks          = data.tasks          || {};
-        todaysTasks    = data.todaysTasks    || {};
-        log            = data.log            || {};
-        if (Array.isArray(data.log)) log = data.log; // compatibility
-        monitoredTasks = data.monitoredTasks || [];
-        // also mirror to local
+        const cloudModified = (typeof data.lastModified === 'number')
+          ? data.lastModified
+          : (data.updatedAt && typeof data.updatedAt.toMillis === 'function') ? data.updatedAt.toMillis() : 0;
+
+        // Decide winner between local (already loaded) and cloud:
+        if (localStamp > cloudModified) {
+          // Local is newer → push it to cloud and keep local in UI
+          await setDoc(ref, {
+            tasks, todaysTasks, log, monitoredTasks,
+            updatedAt: serverTimestamp(),
+            lastModified: localStamp,
+            version: 3
+          }, { merge: true });
+          saveData(); // ensure local mirrors include latest stamp
+          renderLists();
+          renderMonitored();
+          markSync(`Kept newer local "${sessionId}" → synced to cloud ✓`);
+        } else {
+          // Cloud is newer → adopt it
+          tasks          = data.tasks          || {};
+          todaysTasks    = data.todaysTasks    || {};
+          log            = Array.isArray(data.log) ? data.log : (data.log || []);
+          monitoredTasks = data.monitoredTasks || [];
+          saveData();           // mirror to local + stamp
+          renderLists();
+          renderMonitored();
+          markSync(`Loaded "${sessionId}" from cloud ✓`);
+        }
+      } else {
+        // No cloud yet → create from local
+        await setDoc(ref, {
+          tasks, todaysTasks, log, monitoredTasks,
+          updatedAt: serverTimestamp(),
+          lastModified: Number(localStorage.getItem(lsKey("localUpdatedAt"))) || Date.now(),
+          version: 3
+        }, { merge: true });
         saveData();
         renderLists();
         renderMonitored();
-        markSync(`Loaded "${sessionId}" from cloud ✓`);
-      } else {
-        // If session doc doesn't exist, start blank but keep local if any
-        loadFromLocal(sessionId);
-        renderLists();
-        renderMonitored();
-        markSync(`Started new "${sessionId}" (no cloud yet)`);
+        markSync(`Started new "${sessionId}" (synced local → cloud)`);
       }
     } catch (e) {
       console.error(e);
       markSync('Cloud load failed (using local)');
-      loadFromLocal(sessionId);
       renderLists();
       renderMonitored();
     }
@@ -843,7 +883,12 @@ const fbInit = () => {
   async function cloudSave(uid, sessionId) {
     try {
       const ref = doc(db, 'users', uid, 'sessions', sessionId);
-      await setDoc(ref, { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 3 }, { merge: true });
+      await setDoc(ref, {
+        tasks, todaysTasks, log, monitoredTasks,
+        updatedAt: serverTimestamp(),
+        lastModified: Number(localStorage.getItem(lsKey("localUpdatedAt"))) || Date.now(),
+        version: 3
+      }, { merge: true });
       markSync(`Saved "${sessionId}" ✓`);
     } catch (e) {
       console.error(e);
@@ -855,10 +900,11 @@ const fbInit = () => {
     if (!uid) return;
     markSync('Saving…');
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => cloudSave(uid, currentSessionId), 600);
+    // shorter debounce to reduce race windows
+    saveTimer = setTimeout(() => cloudSave(uid, currentSessionId), 200);
   }
 
-  // Patch saveData to also cloud-save current session
+  // Patch saveData to also cloud-save current session (debounced) after local writes
   if (typeof window.saveData === 'function') {
     const _origSaveData = window.saveData;
     window.saveData = function() {
@@ -867,6 +913,13 @@ const fbInit = () => {
       if (user) cloudSaveDebounced(user.uid);
     };
   }
+
+  // Flush on tab hide to avoid losing last edits
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && auth.currentUser) {
+      cloudSave(auth.currentUser.uid, currentSessionId);
+    }
+  });
 
   // Session actions
   $sel.addEventListener('change', async (e) => {
@@ -895,15 +948,15 @@ const fbInit = () => {
     currentSessionId = name;
     // start blank
     tasks = {}; todaysTasks = {}; log = []; monitoredTasks = [];
-    saveData();
-    renderSessionSelect();
-    renderLists();
-    renderMonitored();
-    localStorage.setItem("sessionList", JSON.stringify(sessionList));
-    localStorage.setItem("activeSessionId", currentSessionId);
+    persistNow().then(() => {
+      renderSessionSelect();
+      renderLists();
+      renderMonitored();
+      localStorage.setItem("sessionList", JSON.stringify(sessionList));
+      localStorage.setItem("activeSessionId", currentSessionId);
+    });
     if (auth.currentUser) {
       await saveMeta(auth.currentUser.uid);
-      cloudSaveDebounced(auth.currentUser.uid);
     }
   });
 
@@ -944,15 +997,13 @@ const fbInit = () => {
     // Cloud: copy old doc to new doc (simple overwrite)
     if (auth.currentUser) {
       const uid = auth.currentUser.uid;
-      // read old
       const oldRef = doc(db, 'users', uid, 'sessions', oldName);
       const oldSnap = await getDoc(oldRef);
       if (oldSnap.exists()) {
         await setDoc(doc(db, 'users', uid, 'sessions', newName), oldSnap.data(), { merge: true });
       } else {
-        await setDoc(doc(db, 'users', uid, 'sessions', newName), { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), version: 3 }, { merge: true });
+        await setDoc(doc(db, 'users', uid, 'sessions', newName), { tasks, todaysTasks, log, monitoredTasks, updatedAt: serverTimestamp(), lastModified: Number(localStorage.getItem(lsKey("localUpdatedAt"))) || Date.now(), version: 3 }, { merge: true });
       }
-      // (Optionally you could delete oldRef; keeping it avoids accidental data loss)
       await saveMeta(uid);
     }
   });
@@ -965,6 +1016,7 @@ const fbInit = () => {
     localStorage.removeItem(lsKey("todaysTasks"));
     localStorage.removeItem(lsKey("log"));
     localStorage.removeItem(lsKey("monitoredTasks"));
+    localStorage.removeItem(lsKey("localUpdatedAt"));
     // update list / active
     sessionList = sessionList.filter(s => s !== currentSessionId);
     currentSessionId = sessionList[0];
