@@ -589,7 +589,7 @@ function addCategoryToToday(category) {
     persistNow().then(renderLists);
 }
 
-function completeTask(category, subcategory, task, isToday) {
+async function completeTask(category, subcategory, task, isToday) {
     const now = new Date();
     log.unshift({ date: now.toLocaleDateString(), ts: now.toISOString(), category, subcategory: subcategory || "", task });
     if (subcategory) {
@@ -599,10 +599,11 @@ function completeTask(category, subcategory, task, isToday) {
         todaysTasks[category]._tasks = todaysTasks[category]._tasks.filter(t => t !== task);
     }
     if (!todaysTasks[category]?._tasks?.length && Object.keys(todaysTasks[category] || {}).length === 1) delete todaysTasks[category];
-    persistNow().then(renderLists);
+    await persistNow();
+    renderLists();
 }
 
-function deleteTask(category, subcategory, task, isToday) {
+async function deleteTask(category, subcategory, task, isToday) {
     if (isToday) {
         if (subcategory) { 
             todaysTasks[category][subcategory] = todaysTasks[category][subcategory].filter(t => t !== task); 
@@ -620,7 +621,8 @@ function deleteTask(category, subcategory, task, isToday) {
         }
         if (!tasks[category]?._tasks?.length && Object.keys(tasks[category] || {}).length === 1) delete tasks[category];
     }
-    persistNow().then(renderLists);
+    await persistNow();
+    renderLists();
 }
 
 function renderLog() {
@@ -641,23 +643,26 @@ function renderLog() {
     });
 }
 
-function deleteLog(index) { 
+async function deleteLog(index) { 
     log.splice(index, 1); 
-    persistNow().then(renderLists); 
+    await persistNow();
+    renderLists(); 
 }
 
-function deleteCategory(category) { 
+async function deleteCategory(category) { 
     if (confirm(`Delete category "${category}" and all its tasks?`)) { 
         delete tasks[category]; 
         if (todaysTasks[category]) delete todaysTasks[category]; 
-        persistNow().then(renderLists); 
+        await persistNow();
+        renderLists(); 
     } 
 }
 
-function deleteTodayCategory(category) { 
+async function deleteTodayCategory(category) { 
     if (confirm(`Remove "${category}" from today's tasks?`)) { 
         delete todaysTasks[category]; 
-        persistNow().then(renderLists); 
+        await persistNow();
+        renderLists(); 
     } 
 }
 
@@ -835,26 +840,25 @@ const fbInit = () => {
           ? data.lastModified
           : (data.updatedAt && typeof data.updatedAt.toMillis === 'function') ? data.updatedAt.toMillis() : 0;
 
-        // Decide winner between local (already loaded) and cloud:
-        if (localStamp > cloudModified) {
-          // Local is newer → push it to cloud and keep local in UI
+        // ---- FIX: prefer LOCAL when equal (>=) ----
+        if (localStamp >= cloudModified) {
           await setDoc(ref, {
             tasks, todaysTasks, log, monitoredTasks,
             updatedAt: serverTimestamp(),
-            lastModified: localStamp,
+            lastModified: localStamp || Date.now(),
             version: 3
           }, { merge: true });
           saveData(); // ensure local mirrors include latest stamp
           renderLists();
           renderMonitored();
-          markSync(`Kept newer local "${sessionId}" → synced to cloud ✓`);
+          markSync(`Kept local "${sessionId}" → synced to cloud ✓`);
         } else {
-          // Cloud is newer → adopt it
+          // Cloud is strictly newer → adopt it
           tasks          = data.tasks          || {};
           todaysTasks    = data.todaysTasks    || {};
           log            = Array.isArray(data.log) ? data.log : (data.log || []);
           monitoredTasks = data.monitoredTasks || [];
-          saveData();           // mirror to local + stamp
+          saveData();
           renderLists();
           renderMonitored();
           markSync(`Loaded "${sessionId}" from cloud ✓`);
@@ -896,6 +900,9 @@ const fbInit = () => {
     }
   }
 
+  // expose cloudSave so persistNow() can call it
+  window.cloudSave = cloudSave;
+
   function cloudSaveDebounced(uid) {
     if (!uid) return;
     markSync('Saving…');
@@ -918,6 +925,13 @@ const fbInit = () => {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && auth.currentUser) {
       cloudSave(auth.currentUser.uid, currentSessionId);
+    }
+  });
+
+  // Extra flush on page unload (best effort)
+  window.addEventListener('beforeunload', () => {
+    if (auth.currentUser) {
+      try { cloudSave(auth.currentUser.uid, currentSessionId); } catch {}
     }
   });
 
