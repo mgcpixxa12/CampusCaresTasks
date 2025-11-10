@@ -137,6 +137,19 @@
       justify-content: space-between;
       align-items: center;
       color: #555;
+      gap: 6px;
+    }
+
+    .week-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+    }
+
+    .week-actions select {
+      font-size: 11px;
+      padding: 2px;
     }
 
     .days-row {
@@ -1093,6 +1106,30 @@
       saveState();
     }
 
+    // ---- Copy week ----
+    function copyWeek(sourceWeek, targetWeek) {
+      if (
+        sourceWeek < 0 || sourceWeek > 3 ||
+        targetWeek < 0 || targetWeek > 3 ||
+        sourceWeek === targetWeek
+      ) return;
+
+      // Deep copy assignments (per day, per entry)
+      assignments[targetWeek] = assignments[sourceWeek].map(dayEntries =>
+        dayEntries.map(entry => ({ ...entry }))
+      );
+
+      // Copy start location/time settings
+      dayCellSettings[targetWeek] = dayCellSettings[sourceWeek].map(s => ({
+        startLocationId: s.startLocationId || null,
+        startTime: s.startTime || null
+      }));
+
+      saveState();
+      renderCalendar();
+      renderLocationsTab();
+    }
+
     // ---- Calendar rendering + drag & drop ----
     function renderCalendar() {
       const calendarEl = document.getElementById("calendar");
@@ -1104,7 +1141,48 @@
 
         const weekHeader = document.createElement("div");
         weekHeader.className = "week-header";
-        weekHeader.textContent = `Week ${w + 1} – Total: 00:00`;
+
+        const weekTitleSpan = document.createElement("span");
+        weekTitleSpan.textContent = `Week ${w + 1} – Total: 00:00`;
+
+        const weekActions = document.createElement("div");
+        weekActions.className = "week-actions";
+
+        const copyLabel = document.createElement("span");
+        copyLabel.textContent = "Copy to:";
+
+        const copySelect = document.createElement("select");
+        const copyDefault = document.createElement("option");
+        copyDefault.value = "";
+        copyDefault.textContent = "--";
+        copySelect.appendChild(copyDefault);
+
+        for (let tw = 0; tw < 4; tw++) {
+          if (tw === w) continue;
+          const opt = document.createElement("option");
+          opt.value = String(tw);
+          opt.textContent = `Week ${tw + 1}`;
+          copySelect.appendChild(opt);
+        }
+
+        copySelect.addEventListener("change", () => {
+          const v = copySelect.value;
+          if (v === "") return;
+          const targetWeek = parseInt(v, 10);
+          if (isNaN(targetWeek)) return;
+          const ok = confirm(`Copy Week ${w + 1} (tasks & day settings) to Week ${targetWeek + 1}, overwriting it?`);
+          if (ok) {
+            copyWeek(w, targetWeek);
+          }
+          copySelect.value = "";
+        });
+
+        weekActions.appendChild(copyLabel);
+        weekActions.appendChild(copySelect);
+
+        weekHeader.appendChild(weekTitleSpan);
+        weekHeader.appendChild(weekActions);
+
         weekRow.appendChild(weekHeader);
 
         const daysRow = document.createElement("div");
@@ -1360,7 +1438,7 @@
           daysRow.appendChild(dayCell);
         }
 
-        weekHeader.textContent = `Week ${w + 1} – Total: ${formatMinutesToHHMM(weekTotalMinutes)}`;
+        weekTitleSpan.textContent = `Week ${w + 1} – Total: ${formatMinutesToHHMM(weekTotalMinutes)}`;
         weekRow.appendChild(daysRow);
         calendarEl.appendChild(weekRow);
       }
@@ -1461,7 +1539,7 @@
       headerRow.innerHTML = "";
     }
 
-    // ====== Google login helpers (from old tool, simplified) ======
+    // ====== Google login helpers ======
     function decodeJwt(token) {
       try {
         const base64Url = token.split('.')[1];
@@ -1495,7 +1573,6 @@
     function renderSignInButton() {
       if (!loginEls.signin) return;
 
-      // If already logged in, no need to render button
       if (loginState.user) {
         loginEls.signin.innerHTML = '';
         return;
@@ -1504,7 +1581,6 @@
       loginEls.signin.innerHTML = '';
 
       if (!(window.google && google.accounts && google.accounts.id)) {
-        // Try again after a short delay if library isn't ready yet
         const span = document.createElement('span');
         span.className = 'muted';
         span.textContent = 'Loading sign-in…';
