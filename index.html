@@ -972,59 +972,117 @@
       }, 2000);
     }
 
-    async function loadFromDriveIfPossible() {
-      if (driveState.firstLoadAttempted) return;
-      driveState.firstLoadAttempted = true;
+   async function loadFromDriveIfPossible() {
+  if (!loginState.user) {
+    console.log("Drive load skipped: no logged-in user");
+    return;
+  }
 
-      try {
-        const token = await ensureDriveTokenAsync();
+  // Don't block future attempts if we fail once
+  if (driveState.firstLoadAttempted) {
+    console.log("Drive load: already attempted once, but trying again");
+  }
+  driveState.firstLoadAttempted = true;
 
-        // Find file by name
-        const q = encodeURIComponent(`name = '${DRIVE_FILE_NAME}' and trashed = false`);
-        const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const listJson = await listRes.json();
+  console.log("Drive load starting. User:", loginState.user);
 
-        if (listJson.files && listJson.files.length > 0) {
-          const file = listJson.files[0];
-          driveState.fileId = file.id;
+  try {
+    const token = await ensureDriveTokenAsync();
+    console.log("Drive token acquired?", !!token);
 
-          const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
-            headers: { 'Authorization': 'Bearer ' + token }
-          });
+    const q = `name = '${DRIVE_FILE_NAME}' and trashed = false`;
+    console.log("Drive search query:", q);
 
-          if (contentRes.ok) {
-            const text = await contentRes.text();
-            try {
-              const data = JSON.parse(text);
-              if (data && typeof data === "object") {
-                tasks = Array.isArray(data.tasks) ? data.tasks : [];
-                assignments = Array.isArray(data.assignments) ? data.assignments : [];
-                locations = Array.isArray(data.locations) ? data.locations : [];
-                dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
-                normalizeCurrentState();
-                // Save fresh copy to local + repaint
-                saveState();
-                populateTaskLocationOptions();
-                renderTaskList();
-                renderLocationsTab();
-                renderCalendarHeader();
-                renderCalendar();
-                return;
-              }
-            } catch (e) {
-              console.warn("Failed to parse Drive data:", e);
-            }
-          }
-        }
-
-        // If we get here: no existing file -> create one with current local state
-        await createOrUpdateDriveFile();
-      } catch (e) {
-        console.warn("Drive load failed:", e);
+    const listRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
+      {
+        headers: { 'Authorization': 'Bearer ' + token }
       }
+    );
+
+    const listText = await listRes.text();
+    console.log("Drive list raw response:", listText);
+
+    let listJson;
+    try {
+      listJson = JSON.parse(listText);
+    } catch (e) {
+      console.warn("Failed to parse Drive list response:", e);
+      return;
     }
+
+    console.log("Drive file list result:", listJson);
+
+    if (listJson.files && listJson.files.length > 0) {
+      const file = listJson.files[0];
+      console.log("Found planner-data.json:", file);
+      driveState.fileId = file.id;
+
+      const contentRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+        { headers: { 'Authorization': 'Bearer ' + token } }
+      );
+
+      console.log("Content fetch status:", contentRes.status);
+
+      const text = await contentRes.text();
+      console.log("planner-data.json text preview:", text.slice(0, 300));
+
+      if (!contentRes.ok) {
+        console.warn("Drive content fetch not OK:", text);
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.warn("Failed to parse planner-data.json:", e);
+        return;
+      }
+
+      console.log("Parsed Drive data object:", data);
+
+      if (data && typeof data === "object") {
+        tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        assignments = Array.isArray(data.assignments) ? data.assignments : [];
+        locations = Array.isArray(data.locations) ? data.locations : [];
+        dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
+        normalizeCurrentState();
+
+        console.log(
+          "Applied Drive data. tasks:",
+          tasks.length,
+          "locations:",
+          locations.length
+        );
+
+        // Update local cache + UI
+        saveState();
+        populateTaskLocationOptions();
+        renderTaskList();
+        renderLocationsTab();
+        renderCalendarHeader();
+        renderCalendar();
+
+        // Optional: quick visible confirmation while debugging
+        // alert(`Loaded planner from Drive: ${tasks.length} tasks, ${locations.length} locations.`);
+        return;
+      } else {
+        console.warn("Drive data not an object:", data);
+      }
+    } else {
+      console.log("No planner-data.json found in Drive (files array empty).");
+    }
+
+    // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
+    console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
+    await createOrUpdateDriveFile();
+  } catch (e) {
+    console.warn("Drive load failed:", e);
+  }
+}
+
 
     // ===== Task form & table =====
     function populateTaskLocationOptions(selectedValue) {
