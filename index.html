@@ -327,6 +327,7 @@
       border: 1px solid #ddd;
       padding: 4px;
       text-align: left;
+      vertical-align: top;
     }
 
     th {
@@ -382,33 +383,6 @@
 
     .location-task-list li {
       margin-bottom: 2px;
-    }
-
-    /* 🔹 Bulk edit card styles */
-    .tasks-bulk-card {
-      background: #ffffff;
-      border-radius: 6px;
-      border: 1px dashed #bbb;
-      padding: 8px 10px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .tasks-bulk-card h3 {
-      margin: 0 0 6px;
-      font-size: 13px;
-    }
-
-    .tasks-bulk-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: flex-end;
-    }
-
-    .tasks-bulk-row > div {
-      flex: 1;
-      min-width: 140px;
     }
 
     @media (max-width: 800px) {
@@ -497,46 +471,10 @@
             </div>
           </div>
           <button id="taskFormSubmitBtn" onclick="handleTaskFormSubmit()">Add Task to List</button>
-          <button id="taskFormCancelBtn" style="display:none;margin-left:8px;" onclick="cancelEditTask()">Cancel Edit</button>
-        </div>
-
-        <!-- 🔹 NEW: Bulk edit frequencies card -->
-        <div class="tasks-bulk-card">
-          <h3>Bulk Edit Task Frequencies</h3>
-          <div class="tasks-bulk-row">
-            <div>
-              <label for="bulkFromFrequency">Change all tasks with frequency:</label>
-              <select id="bulkFromFrequency">
-                <option value="">-- Select --</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-                <option value="one-time">One-time</option>
-              </select>
-            </div>
-            <div>
-              <label for="bulkToFrequency">Set their frequency to:</label>
-              <select id="bulkToFrequency">
-                <option value="">-- Select --</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-                <option value="one-time">One-time</option>
-              </select>
-            </div>
-            <div style="flex:0;">
-              <button class="btn" type="button" onclick="handleBulkFrequencyChange()">Apply</button>
-            </div>
-          </div>
-          <div class="muted" style="margin-top:4px;">
-            Example: set “from: Daily” → “to: Monthly” to fix mis-labeled tasks in one click.
-          </div>
         </div>
 
         <div class="tasks-list-card">
-          <h2>Current Tasks (drag to reorder)</h2>
+          <h2>Current Tasks (drag to reorder, click Edit to change inline)</h2>
           <div id="tasksTableWrapper"></div>
         </div>
       </div>
@@ -580,7 +518,7 @@
     let nextLocationId = 1;
     let dayCellSettings = []; // [week][day] = { startLocationId, startTime }
 
-    let editingTaskId = null;
+    let editingTaskId = null;        // now used ONLY for inline row editing
     let editingLocationId = null;
     let draggedTaskIndex = null;
     let calendarDragSource = null;
@@ -622,6 +560,7 @@
     function escapeHtml(str) {
       return (str || "")
         .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
     }
@@ -671,6 +610,35 @@
       if (!id) return null;
       const loc = locations.find(l => l.id === id);
       return loc ? loc.color : null;
+    }
+
+    function buildFrequencySelectHtml(elementId, currentValue) {
+      const freqs = ["daily", "weekly", "monthly", "yearly", "one-time"];
+      const labels = {
+        daily: "Daily",
+        weekly: "Weekly",
+        monthly: "Monthly",
+        yearly: "Yearly",
+        "one-time": "One-time"
+      };
+      let html = `<select id="${elementId}">`;
+      freqs.forEach(f => {
+        const selected = f === currentValue ? ' selected' : '';
+        html += `<option value="${f}"${selected}>${labels[f]}</option>`;
+      });
+      html += `</select>`;
+      return html;
+    }
+
+    function buildLocationSelectHtml(elementId, currentValue) {
+      let html = `<select id="${elementId}">`;
+      html += `<option value="all"${currentValue === "all" ? " selected" : ""}>All locations</option>`;
+      locations.forEach(loc => {
+        const selected = (currentValue === loc.id) ? " selected" : "";
+        html += `<option value="${loc.id}"${selected}>${escapeHtml(loc.name)}</option>`;
+      });
+      html += `</select>`;
+      return html;
     }
 
     // ===== Normalization & local persistence =====
@@ -1040,7 +1008,6 @@
         return;
       }
 
-      // Don't block future attempts if we fail once
       if (driveState.firstLoadAttempted) {
         console.log("Drive load: already attempted once, but trying again");
       }
@@ -1135,7 +1102,6 @@
           console.log("No planner-data.json found in Drive (files array empty).");
         }
 
-        // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
         console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
         await createOrUpdateDriveFile();
       } catch (e) {
@@ -1190,30 +1156,16 @@
         return;
       }
 
-      if (editingTaskId === null) {
-        const newTask = {
-          id: nextTaskId++,
-          name,
-          description: desc,
-          lengthMinutes,
-          frequency,
-          location: locationVal
-        };
-        tasks.push(newTask);
-      } else {
-        const task = tasks.find(t => t.id === editingTaskId);
-        if (task) {
-          task.name = name;
-          task.description = desc;
-          task.lengthMinutes = lengthMinutes;
-          task.frequency = frequency;
-          task.location = locationVal;
-        }
-      }
-
-      editingTaskId = null;
-      document.getElementById("taskFormSubmitBtn").textContent = "Add Task to List";
-      document.getElementById("taskFormCancelBtn").style.display = "none";
+      // Top form is ADD-only now.
+      const newTask = {
+        id: nextTaskId++,
+        name,
+        description: desc,
+        lengthMinutes,
+        frequency,
+        location: locationVal
+      };
+      tasks.push(newTask);
 
       nameInput.value = "";
       descInput.value = "";
@@ -1221,76 +1173,70 @@
       freqSelect.value = "daily";
       populateTaskLocationOptions("all");
 
+      editingTaskId = null; // cancel any inline edit
       renderTaskList();
       renderCalendar();
       renderLocationsTab();
       saveState();
     }
 
-    // 🔹 Bulk frequency change handler
-    function handleBulkFrequencyChange() {
-      const fromSelect = document.getElementById("bulkFromFrequency");
-      const toSelect = document.getElementById("bulkToFrequency");
-
-      const from = fromSelect.value;
-      const to = toSelect.value;
-
-      if (!from || !to) {
-        alert("Please select both the current frequency and the new frequency.");
-        return;
-      }
-      if (from === to) {
-        alert("The from and to frequencies are the same. Pick two different ones.");
-        return;
-      }
-
-      let changed = 0;
-      tasks.forEach(t => {
-        if (t.frequency === from) {
-          t.frequency = to;
-          changed++;
-        }
-      });
-
-      if (changed === 0) {
-        alert("No tasks currently use that frequency.");
-        return;
-      }
-
-      saveState();
-      renderTaskList();
-      renderCalendar();
-      renderLocationsTab();
-
-      alert(`Updated ${changed} task(s) from ${formatFrequency(from)} to ${formatFrequency(to)}.`);
-    }
-
+    // Inline edit start
     function startEditTask(taskId) {
+      if (editingTaskId === taskId) {
+        editingTaskId = null;
+      } else {
+        editingTaskId = taskId;
+      }
+      renderTaskList();
+    }
+
+    function cancelInlineEdit() {
+      editingTaskId = null;
+      renderTaskList();
+    }
+
+    function saveInlineTask(taskId) {
+      const nameEl = document.getElementById(`task-name-${taskId}`);
+      const descEl = document.getElementById(`task-desc-${taskId}`);
+      const lenEl = document.getElementById(`task-length-${taskId}`);
+      const freqEl = document.getElementById(`task-frequency-${taskId}`);
+      const locEl = document.getElementById(`task-location-${taskId}`);
+
+      if (!nameEl || !lenEl || !freqEl || !locEl) {
+        alert("Unable to find inputs for this task.");
+        return;
+      }
+
+      const name = nameEl.value.trim();
+      const desc = descEl ? descEl.value.trim() : "";
+      const lengthMinutes = parseInt(lenEl.value, 10);
+      const frequency = freqEl.value || "daily";
+      const rawLoc = locEl.value || "all";
+      const locationVal = rawLoc === "all" ? "all" : parseInt(rawLoc, 10);
+
+      if (!name) {
+        alert("Please enter a task name.");
+        return;
+      }
+      if (isNaN(lengthMinutes)) {
+        alert("Please enter a valid number of minutes (can be negative for lunch).");
+        return;
+      }
+
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
-      editingTaskId = taskId;
-      document.getElementById("taskName").value = task.name;
-      document.getElementById("taskDescription").value = task.description || "";
-      document.getElementById("taskLength").value = task.lengthMinutes;
-      document.getElementById("taskFrequency").value = task.frequency;
-      populateTaskLocationOptions(task.location || "all");
+      task.name = name;
+      task.description = desc;
+      task.lengthMinutes = lengthMinutes;
+      task.frequency = frequency;
+      task.location = locationVal;
 
-      document.getElementById("taskFormSubmitBtn").textContent = "Save Changes";
-      document.getElementById("taskFormCancelBtn").style.display = "inline-block";
-
-      showTab("tasks");
-    }
-
-    function cancelEditTask() {
       editingTaskId = null;
-      document.getElementById("taskName").value = "";
-      document.getElementById("taskDescription").value = "";
-      document.getElementById("taskLength").value = "";
-      document.getElementById("taskFrequency").value = "daily";
-      populateTaskLocationOptions("all");
-      document.getElementById("taskFormSubmitBtn").textContent = "Add Task to List";
-      document.getElementById("taskFormCancelBtn").style.display = "none";
+      saveState();
+      renderTaskList();
+      renderCalendar();
+      renderLocationsTab();
     }
 
     function deleteTask(taskId) {
@@ -1299,7 +1245,7 @@
       tasks = tasks.filter(t => t.id !== taskId);
 
       if (editingTaskId === taskId) {
-        cancelEditTask();
+        cancelInlineEdit();
       }
 
       for (let w = 0; w < 4; w++) {
@@ -1328,18 +1274,34 @@
       html += "</tr></thead><tbody>";
 
       tasks.forEach((task, index) => {
-        html += `<tr data-task-index="${index}">
-          <td>${task.id}</td>
-          <td>${escapeHtml(task.name)}</td>
-          <td>${escapeHtml(task.description || "")}</td>
-          <td>${task.lengthMinutes}</td>
-          <td>${formatFrequency(task.frequency)}</td>
-          <td>${escapeHtml(getLocationNameByValue(task.location))}</td>
-          <td>
-            <button onclick="startEditTask(${task.id})">Edit</button>
-            <button onclick="deleteTask(${task.id})">Delete</button>
-          </td>
-        </tr>`;
+        const isEditing = task.id === editingTaskId;
+        if (!isEditing) {
+          html += `<tr data-task-index="${index}">
+            <td>${task.id}</td>
+            <td>${escapeHtml(task.name)}</td>
+            <td>${escapeHtml(task.description || "")}</td>
+            <td>${task.lengthMinutes}</td>
+            <td>${formatFrequency(task.frequency)}</td>
+            <td>${escapeHtml(getLocationNameByValue(task.location))}</td>
+            <td>
+              <button onclick="startEditTask(${task.id})">Edit</button>
+              <button onclick="deleteTask(${task.id})">Delete</button>
+            </td>
+          </tr>`;
+        } else {
+          html += `<tr data-task-index="${index}">
+            <td>${task.id}</td>
+            <td><input id="task-name-${task.id}" type="text" value="${escapeHtml(task.name)}" /></td>
+            <td><input id="task-desc-${task.id}" type="text" value="${escapeHtml(task.description || "")}" /></td>
+            <td><input id="task-length-${task.id}" type="number" value="${task.lengthMinutes}" style="width:70px;" /></td>
+            <td>${buildFrequencySelectHtml(`task-frequency-${task.id}`, task.frequency)}</td>
+            <td>${buildLocationSelectHtml(`task-location-${task.id}`, task.location)}</td>
+            <td>
+              <button onclick="saveInlineTask(${task.id})">Save</button>
+              <button onclick="cancelInlineEdit()">Cancel</button>
+            </td>
+          </tr>`;
+        }
       });
 
       html += "</tbody></table>";
