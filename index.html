@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>4-Week Task Calendar 11/30/11:16</title>
+  <title>4-Week Task Calendar 11/30/12:00</title>
 
   <!-- Google Sign-In -->
   <meta name="google-signin-client_id" content="328251555874-15b0ha0ptqme9l6hoggt9kecdvd1npqb.apps.googleusercontent.com" />
@@ -611,6 +611,21 @@
       return loc ? loc.color : null;
     }
 
+    // Get the current location at the *end* of the day (where new tasks will be added)
+    function getCurrentLocationForDay(weekIndex, dayIndex) {
+      const settings = dayCellSettings[weekIndex][dayIndex] || { startLocationId: null };
+      let currentLocId = settings.startLocationId || null;
+      const entries = assignments[weekIndex][dayIndex] || [];
+
+      entries.forEach(entry => {
+        if (entry.type === "travel") {
+          currentLocId = entry.locationId || null;
+        }
+      });
+
+      return currentLocId;
+    }
+
     // ===== Normalization & local persistence =====
     function initAssignments() {
       assignments = [];
@@ -886,13 +901,16 @@
     function ensureDriveTokenAsync() {
       return new Promise((resolve, reject) => {
         if (!loginState.user) {
+          console.log("ensureDriveTokenAsync: Not signed in.");
           return reject(new Error("Not signed in; Drive sync disabled."));
         }
         if (!(window.google && google.accounts && google.accounts.oauth2)) {
+          console.log("ensureDriveTokenAsync: google.accounts.oauth2 not ready.");
           return reject(new Error("Google OAuth2 library not ready"));
         }
 
         if (driveState.accessToken) {
+          console.log("ensureDriveTokenAsync: Reusing cached access token.");
           return resolve(driveState.accessToken);
         }
 
@@ -906,13 +924,16 @@
 
         driveState.tokenClient.callback = (tokenResponse) => {
           if (tokenResponse.error) {
+            console.warn("Token error:", tokenResponse);
             reject(tokenResponse);
           } else {
+            console.log("Token acquired:", tokenResponse);
             driveState.accessToken = tokenResponse.access_token;
             resolve(driveState.accessToken);
           }
         };
 
+        console.log("Requesting Drive access token…");
         driveState.tokenClient.requestAccessToken({ prompt: '' });
       });
     }
@@ -972,117 +993,114 @@
       }, 2000);
     }
 
-   async function loadFromDriveIfPossible() {
-  if (!loginState.user) {
-    console.log("Drive load skipped: no logged-in user");
-    return;
-  }
-
-  // Don't block future attempts if we fail once
-  if (driveState.firstLoadAttempted) {
-    console.log("Drive load: already attempted once, but trying again");
-  }
-  driveState.firstLoadAttempted = true;
-
-  console.log("Drive load starting. User:", loginState.user);
-
-  try {
-    const token = await ensureDriveTokenAsync();
-    console.log("Drive token acquired?", !!token);
-
-    const q = `name = '${DRIVE_FILE_NAME}' and trashed = false`;
-    console.log("Drive search query:", q);
-
-    const listRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
-      {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-
-    const listText = await listRes.text();
-    console.log("Drive list raw response:", listText);
-
-    let listJson;
-    try {
-      listJson = JSON.parse(listText);
-    } catch (e) {
-      console.warn("Failed to parse Drive list response:", e);
-      return;
-    }
-
-    console.log("Drive file list result:", listJson);
-
-    if (listJson.files && listJson.files.length > 0) {
-      const file = listJson.files[0];
-      console.log("Found planner-data.json:", file);
-      driveState.fileId = file.id;
-
-      const contentRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-        { headers: { 'Authorization': 'Bearer ' + token } }
-      );
-
-      console.log("Content fetch status:", contentRes.status);
-
-      const text = await contentRes.text();
-      console.log("planner-data.json text preview:", text.slice(0, 300));
-
-      if (!contentRes.ok) {
-        console.warn("Drive content fetch not OK:", text);
+    async function loadFromDriveIfPossible() {
+      if (!loginState.user) {
+        console.log("Drive load skipped: no logged-in user");
         return;
       }
 
-      let data;
+      // Don't block future attempts if we fail once
+      if (driveState.firstLoadAttempted) {
+        console.log("Drive load: already attempted once, but trying again");
+      }
+      driveState.firstLoadAttempted = true;
+
+      console.log("Drive load starting. User:", loginState.user);
+
       try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.warn("Failed to parse planner-data.json:", e);
-        return;
-      }
+        const token = await ensureDriveTokenAsync();
+        console.log("Drive token acquired?", !!token);
 
-      console.log("Parsed Drive data object:", data);
+        const q = `name = '${DRIVE_FILE_NAME}' and trashed = false`;
+        console.log("Drive search query:", q);
 
-      if (data && typeof data === "object") {
-        tasks = Array.isArray(data.tasks) ? data.tasks : [];
-        assignments = Array.isArray(data.assignments) ? data.assignments : [];
-        locations = Array.isArray(data.locations) ? data.locations : [];
-        dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
-        normalizeCurrentState();
-
-        console.log(
-          "Applied Drive data. tasks:",
-          tasks.length,
-          "locations:",
-          locations.length
+        const listRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
+          {
+            headers: { 'Authorization': 'Bearer ' + token }
+          }
         );
 
-        // Update local cache + UI
-        saveState();
-        populateTaskLocationOptions();
-        renderTaskList();
-        renderLocationsTab();
-        renderCalendarHeader();
-        renderCalendar();
+        const listText = await listRes.text();
+        console.log("Drive list raw response:", listText);
 
-        // Optional: quick visible confirmation while debugging
-        // alert(`Loaded planner from Drive: ${tasks.length} tasks, ${locations.length} locations.`);
-        return;
-      } else {
-        console.warn("Drive data not an object:", data);
+        let listJson;
+        try {
+          listJson = JSON.parse(listText);
+        } catch (e) {
+          console.warn("Failed to parse Drive list response:", e);
+          return;
+        }
+
+        console.log("Drive file list result:", listJson);
+
+        if (listJson.files && listJson.files.length > 0) {
+          const file = listJson.files[0];
+          console.log("Found planner-data.json:", file);
+          driveState.fileId = file.id;
+
+          const contentRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
+            { headers: { 'Authorization': 'Bearer ' + token } }
+          );
+
+          console.log("Content fetch status:", contentRes.status);
+
+          const text = await contentRes.text();
+          console.log("planner-data.json text preview:", text.slice(0, 300));
+
+          if (!contentRes.ok) {
+            console.warn("Drive content fetch not OK:", text);
+            return;
+          }
+
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            console.warn("Failed to parse planner-data.json:", e);
+            return;
+          }
+
+          console.log("Parsed Drive data object:", data);
+
+          if (data && typeof data === "object") {
+            tasks = Array.isArray(data.tasks) ? data.tasks : [];
+            assignments = Array.isArray(data.assignments) ? data.assignments : [];
+            locations = Array.isArray(data.locations) ? data.locations : [];
+            dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
+            normalizeCurrentState();
+
+            console.log(
+              "Applied Drive data. tasks:",
+              tasks.length,
+              "locations:",
+              locations.length
+            );
+
+            // Update local cache + UI
+            saveState();
+            populateTaskLocationOptions();
+            renderTaskList();
+            renderLocationsTab();
+            renderCalendarHeader();
+            renderCalendar();
+
+            return;
+          } else {
+            console.warn("Drive data not an object:", data);
+          }
+        } else {
+          console.log("No planner-data.json found in Drive (files array empty).");
+        }
+
+        // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
+        console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
+        await createOrUpdateDriveFile();
+      } catch (e) {
+        console.warn("Drive load failed:", e);
       }
-    } else {
-      console.log("No planner-data.json found in Drive (files array empty).");
     }
-
-    // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
-    console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
-    await createOrUpdateDriveFile();
-  } catch (e) {
-    console.warn("Drive load failed:", e);
-  }
-}
-
 
     // ===== Task form & table =====
     function populateTaskLocationOptions(selectedValue) {
@@ -1351,29 +1369,47 @@
     }
 
     // ===== Frequency rules & assignments =====
-    function isTaskBlockedForCell(task, weekIndex, dayIndex) {
-      const taskId = task.id;
-      const entries = assignments[weekIndex][dayIndex];
+    function isTaskBlockedForCell(task, weekIndex, dayIndex, locationIdForThisAdd) {
+      const targetLocKey = String(locationIdForThisAdd || "none");
 
-      if (task.frequency === "daily") {
-        return entries.some(e => e.type === "task" && e.taskId === taskId);
+      function taskAppearsInDayAtLocation(dayW, dayD) {
+        const settings = dayCellSettings[dayW][dayD] || { startLocationId: null };
+        let curLoc = settings.startLocationId || null;
+        const entries = assignments[dayW][dayD] || [];
+
+        for (const entry of entries) {
+          if (entry.type === "travel") {
+            curLoc = entry.locationId || null;
+          } else if (entry.type === "task" && entry.taskId === task.id) {
+            const key = String(curLoc || "none");
+            if (key === targetLocKey) {
+              return true;
+            }
+          }
+        }
+        return false;
       }
 
+      // Daily: once per location per day
+      if (task.frequency === "daily") {
+        return taskAppearsInDayAtLocation(weekIndex, dayIndex);
+      }
+
+      // Weekly: once per location per week
       if (task.frequency === "weekly") {
         for (let d = 0; d < 7; d++) {
-          const e = assignments[weekIndex][d];
-          if (e.some(x => x.type === "task" && x.taskId === taskId)) {
+          if (taskAppearsInDayAtLocation(weekIndex, d)) {
             return true;
           }
         }
         return false;
       }
 
+      // Monthly / Yearly / One-time: once per location in the 4-week block
       if (["monthly", "yearly", "one-time"].includes(task.frequency)) {
         for (let w = 0; w < 4; w++) {
           for (let d = 0; d < 7; d++) {
-            const e = assignments[w][d];
-            if (e.some(x => x.type === "task" && x.taskId === taskId)) {
+            if (taskAppearsInDayAtLocation(w, d)) {
               return true;
             }
           }
@@ -1387,10 +1423,14 @@
     function addTaskToCell(weekIndex, dayIndex, taskId) {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
-      if (isTaskBlockedForCell(task, weekIndex, dayIndex)) {
+
+      const currentLocId = getCurrentLocationForDay(weekIndex, dayIndex);
+
+      if (isTaskBlockedForCell(task, weekIndex, dayIndex, currentLocId)) {
         alert("This task can't be added here based on its frequency rules.");
         return;
       }
+
       assignments[weekIndex][dayIndex].push({ type: "task", taskId });
       renderCalendar();
       renderLocationsTab();
@@ -1558,8 +1598,17 @@
           defaultOption.textContent = tasks.length === 0 && locations.length === 0 ? "No items yet" : "Add...";
           select.appendChild(defaultOption);
 
+          const currentLocIdForDropdown = getCurrentLocationForDay(w, d);
+
           tasks.forEach(task => {
-            if (!isTaskBlockedForCell(task, w, d)) {
+            // Filter by location context: "all" shows everywhere, specific locations only when we're there
+            if (task.location !== "all") {
+              if (!currentLocIdForDropdown || task.location !== currentLocIdForDropdown) {
+                return;
+              }
+            }
+
+            if (!isTaskBlockedForCell(task, w, d, currentLocIdForDropdown)) {
               const opt = document.createElement("option");
               opt.value = `task:${task.id}`;
               opt.textContent = `${task.name} (${task.lengthMinutes}m, ${formatFrequency(task.frequency)})`;
