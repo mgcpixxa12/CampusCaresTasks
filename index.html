@@ -327,7 +327,6 @@
       border: 1px solid #ddd;
       padding: 4px;
       text-align: left;
-      vertical-align: top;
     }
 
     th {
@@ -471,10 +470,11 @@
             </div>
           </div>
           <button id="taskFormSubmitBtn" onclick="handleTaskFormSubmit()">Add Task to List</button>
+          <button id="taskFormCancelBtn" style="display:none;margin-left:8px;" onclick="cancelEditTask()">Cancel Edit</button>
         </div>
 
         <div class="tasks-list-card">
-          <h2>Current Tasks (drag to reorder, click Edit to change inline)</h2>
+          <h2>Current Tasks (drag to reorder)</h2>
           <div id="tasksTableWrapper"></div>
         </div>
       </div>
@@ -518,7 +518,7 @@
     let nextLocationId = 1;
     let dayCellSettings = []; // [week][day] = { startLocationId, startTime }
 
-    let editingTaskId = null;        // now used ONLY for inline row editing
+    let editingTaskId = null;
     let editingLocationId = null;
     let draggedTaskIndex = null;
     let calendarDragSource = null;
@@ -560,7 +560,6 @@
     function escapeHtml(str) {
       return (str || "")
         .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
     }
@@ -610,35 +609,6 @@
       if (!id) return null;
       const loc = locations.find(l => l.id === id);
       return loc ? loc.color : null;
-    }
-
-    function buildFrequencySelectHtml(elementId, currentValue) {
-      const freqs = ["daily", "weekly", "monthly", "yearly", "one-time"];
-      const labels = {
-        daily: "Daily",
-        weekly: "Weekly",
-        monthly: "Monthly",
-        yearly: "Yearly",
-        "one-time": "One-time"
-      };
-      let html = `<select id="${elementId}">`;
-      freqs.forEach(f => {
-        const selected = f === currentValue ? ' selected' : '';
-        html += `<option value="${f}"${selected}>${labels[f]}</option>`;
-      });
-      html += `</select>`;
-      return html;
-    }
-
-    function buildLocationSelectHtml(elementId, currentValue) {
-      let html = `<select id="${elementId}">`;
-      html += `<option value="all"${currentValue === "all" ? " selected" : ""}>All locations</option>`;
-      locations.forEach(loc => {
-        const selected = (currentValue === loc.id) ? " selected" : "";
-        html += `<option value="${loc.id}"${selected}>${escapeHtml(loc.name)}</option>`;
-      });
-      html += `</select>`;
-      return html;
     }
 
     // ===== Normalization & local persistence =====
@@ -1008,6 +978,7 @@
         return;
       }
 
+      // Don't block future attempts if we fail once
       if (driveState.firstLoadAttempted) {
         console.log("Drive load: already attempted once, but trying again");
       }
@@ -1102,6 +1073,7 @@
           console.log("No planner-data.json found in Drive (files array empty).");
         }
 
+        // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
         console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
         await createOrUpdateDriveFile();
       } catch (e) {
@@ -1156,16 +1128,30 @@
         return;
       }
 
-      // Top form is ADD-only now.
-      const newTask = {
-        id: nextTaskId++,
-        name,
-        description: desc,
-        lengthMinutes,
-        frequency,
-        location: locationVal
-      };
-      tasks.push(newTask);
+      if (editingTaskId === null) {
+        const newTask = {
+          id: nextTaskId++,
+          name,
+          description: desc,
+          lengthMinutes,
+          frequency,
+          location: locationVal
+        };
+        tasks.push(newTask);
+      } else {
+        const task = tasks.find(t => t.id === editingTaskId);
+        if (task) {
+          task.name = name;
+          task.description = desc;
+          task.lengthMinutes = lengthMinutes;
+          task.frequency = frequency;
+          task.location = locationVal;
+        }
+      }
+
+      editingTaskId = null;
+      document.getElementById("taskFormSubmitBtn").textContent = "Add Task to List";
+      document.getElementById("taskFormCancelBtn").style.display = "none";
 
       nameInput.value = "";
       descInput.value = "";
@@ -1173,70 +1159,38 @@
       freqSelect.value = "daily";
       populateTaskLocationOptions("all");
 
-      editingTaskId = null; // cancel any inline edit
       renderTaskList();
       renderCalendar();
       renderLocationsTab();
       saveState();
     }
 
-    // Inline edit start
     function startEditTask(taskId) {
-      if (editingTaskId === taskId) {
-        editingTaskId = null;
-      } else {
-        editingTaskId = taskId;
-      }
-      renderTaskList();
-    }
-
-    function cancelInlineEdit() {
-      editingTaskId = null;
-      renderTaskList();
-    }
-
-    function saveInlineTask(taskId) {
-      const nameEl = document.getElementById(`task-name-${taskId}`);
-      const descEl = document.getElementById(`task-desc-${taskId}`);
-      const lenEl = document.getElementById(`task-length-${taskId}`);
-      const freqEl = document.getElementById(`task-frequency-${taskId}`);
-      const locEl = document.getElementById(`task-location-${taskId}`);
-
-      if (!nameEl || !lenEl || !freqEl || !locEl) {
-        alert("Unable to find inputs for this task.");
-        return;
-      }
-
-      const name = nameEl.value.trim();
-      const desc = descEl ? descEl.value.trim() : "";
-      const lengthMinutes = parseInt(lenEl.value, 10);
-      const frequency = freqEl.value || "daily";
-      const rawLoc = locEl.value || "all";
-      const locationVal = rawLoc === "all" ? "all" : parseInt(rawLoc, 10);
-
-      if (!name) {
-        alert("Please enter a task name.");
-        return;
-      }
-      if (isNaN(lengthMinutes)) {
-        alert("Please enter a valid number of minutes (can be negative for lunch).");
-        return;
-      }
-
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
-      task.name = name;
-      task.description = desc;
-      task.lengthMinutes = lengthMinutes;
-      task.frequency = frequency;
-      task.location = locationVal;
+      editingTaskId = taskId;
+      document.getElementById("taskName").value = task.name;
+      document.getElementById("taskDescription").value = task.description || "";
+      document.getElementById("taskLength").value = task.lengthMinutes;
+      document.getElementById("taskFrequency").value = task.frequency;
+      populateTaskLocationOptions(task.location || "all");
 
+      document.getElementById("taskFormSubmitBtn").textContent = "Save Changes";
+      document.getElementById("taskFormCancelBtn").style.display = "inline-block";
+
+      showTab("tasks");
+    }
+
+    function cancelEditTask() {
       editingTaskId = null;
-      saveState();
-      renderTaskList();
-      renderCalendar();
-      renderLocationsTab();
+      document.getElementById("taskName").value = "";
+      document.getElementById("taskDescription").value = "";
+      document.getElementById("taskLength").value = "";
+      document.getElementById("taskFrequency").value = "daily";
+      populateTaskLocationOptions("all");
+      document.getElementById("taskFormSubmitBtn").textContent = "Add Task to List";
+      document.getElementById("taskFormCancelBtn").style.display = "none";
     }
 
     function deleteTask(taskId) {
@@ -1245,7 +1199,7 @@
       tasks = tasks.filter(t => t.id !== taskId);
 
       if (editingTaskId === taskId) {
-        cancelInlineEdit();
+        cancelEditTask();
       }
 
       for (let w = 0; w < 4; w++) {
@@ -1274,40 +1228,91 @@
       html += "</tr></thead><tbody>";
 
       tasks.forEach((task, index) => {
-        const isEditing = task.id === editingTaskId;
-        if (!isEditing) {
-          html += `<tr data-task-index="${index}">
-            <td>${task.id}</td>
-            <td>${escapeHtml(task.name)}</td>
-            <td>${escapeHtml(task.description || "")}</td>
-            <td>${task.lengthMinutes}</td>
-            <td>${formatFrequency(task.frequency)}</td>
-            <td>${escapeHtml(getLocationNameByValue(task.location))}</td>
-            <td>
-              <button onclick="startEditTask(${task.id})">Edit</button>
-              <button onclick="deleteTask(${task.id})">Delete</button>
-            </td>
-          </tr>`;
-        } else {
-          html += `<tr data-task-index="${index}">
-            <td>${task.id}</td>
-            <td><input id="task-name-${task.id}" type="text" value="${escapeHtml(task.name)}" /></td>
-            <td><input id="task-desc-${task.id}" type="text" value="${escapeHtml(task.description || "")}" /></td>
-            <td><input id="task-length-${task.id}" type="number" value="${task.lengthMinutes}" style="width:70px;" /></td>
-            <td>${buildFrequencySelectHtml(`task-frequency-${task.id}`, task.frequency)}</td>
-            <td>${buildLocationSelectHtml(`task-location-${task.id}`, task.location)}</td>
-            <td>
-              <button onclick="saveInlineTask(${task.id})">Save</button>
-              <button onclick="cancelInlineEdit()">Cancel</button>
-            </td>
-          </tr>`;
-        }
+        html += `<tr data-task-index="${index}">
+          <td>${task.id}</td>
+          <td>${escapeHtml(task.name)}</td>
+          <td>${escapeHtml(task.description || "")}</td>
+          <td>
+            <input type="number"
+                   class="task-length-input"
+                   data-task-id="${task.id}"
+                   value="${task.lengthMinutes}"
+                   style="width:60px;" />
+          </td>
+          <td>
+            <select class="task-frequency-select" data-task-id="${task.id}">
+              <option value="daily" ${task.frequency === "daily" ? "selected" : ""}>Daily</option>
+              <option value="weekly" ${task.frequency === "weekly" ? "selected" : ""}>Weekly</option>
+              <option value="monthly" ${task.frequency === "monthly" ? "selected" : ""}>Monthly</option>
+              <option value="yearly" ${task.frequency === "yearly" ? "selected" : ""}>Yearly</option>
+              <option value="one-time" ${task.frequency === "one-time" ? "selected" : ""}>One-time</option>
+            </select>
+          </td>
+          <td>
+            <select class="task-location-select" data-task-id="${task.id}">
+              <option value="all" ${task.location === "all" ? "selected" : ""}>All locations</option>
+              ${locations.map(loc => `
+                <option value="${loc.id}" ${task.location === loc.id ? "selected" : ""}>
+                  ${escapeHtml(loc.name)}
+                </option>
+              `).join("")}
+            </select>
+          </td>
+          <td>
+            <button onclick="startEditTask(${task.id})">Edit</button>
+            <button onclick="deleteTask(${task.id})">Delete</button>
+          </td>
+        </tr>`;
       });
 
       html += "</tbody></table>";
       wrapper.innerHTML = html;
 
       attachDragAndDropToTaskRows();
+      wireTaskRowControls();
+    }
+
+    function wireTaskRowControls() {
+      // Length change
+      document.querySelectorAll(".task-length-input").forEach(input => {
+        input.addEventListener("change", () => {
+          const id = parseInt(input.dataset.taskId, 10);
+          const task = tasks.find(t => t.id === id);
+          if (!task) return;
+          const val = parseInt(input.value, 10);
+          task.lengthMinutes = isNaN(val) ? 0 : val;
+          saveState();
+          renderCalendar();
+          renderLocationsTab();
+        });
+      });
+
+      // Frequency change
+      document.querySelectorAll(".task-frequency-select").forEach(sel => {
+        sel.addEventListener("change", () => {
+          const id = parseInt(sel.dataset.taskId, 10);
+          const task = tasks.find(t => t.id === id);
+          if (!task) return;
+          task.frequency = sel.value;
+          saveState();
+          renderCalendar();
+          renderLocationsTab();
+        });
+      });
+
+      // Location change
+      document.querySelectorAll(".task-location-select").forEach(sel => {
+        sel.addEventListener("change", () => {
+          const id = parseInt(sel.dataset.taskId, 10);
+          const task = tasks.find(t => t.id === id);
+          if (!task) return;
+          const raw = sel.value;
+          task.location = raw === "all" ? "all" : parseInt(raw, 10);
+          saveState();
+          renderCalendar();
+          renderLocationsTab();
+        });
+      });
     }
 
     function attachDragAndDropToTaskRows() {
@@ -1409,16 +1414,46 @@
       document.getElementById("locationFormCancelBtn").style.display = "none";
     }
 
-    // ===== Frequency rules & assignments =====
-    function isTaskBlockedForCell(task, weekIndex, dayIndex) {
+    // ===== Frequency rules & assignments (per-location) =====
+    function isTaskBlockedForCell(task, weekIndex, dayIndex, locationId) {
       const taskId = task.id;
       const entries = assignments[weekIndex][dayIndex];
 
+      // Helper: does this day contain this task at a given location?
+      function dayHasTaskAtLocation(w, d, locFilter) {
+        const settings = dayCellSettings[w][d] || { startLocationId: null };
+        let currentLocId = settings.startLocationId || null;
+        const dayEntries = assignments[w][d];
+
+        for (const entry of dayEntries) {
+          if (entry.type === "travel") {
+            currentLocId = entry.locationId || null;
+          } else if (entry.type === "task" && entry.taskId === taskId) {
+            if (locFilter == null || currentLocId === locFilter) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      // DAILY: per-day; if location given, per-location-per-day
       if (task.frequency === "daily") {
+        if (locationId != null) {
+          return dayHasTaskAtLocation(weekIndex, dayIndex, locationId);
+        }
         return entries.some(e => e.type === "task" && e.taskId === taskId);
       }
 
+      // WEEKLY: per-week; if location given, per-location-per-week
       if (task.frequency === "weekly") {
+        if (locationId != null) {
+          for (let d = 0; d < 7; d++) {
+            if (dayHasTaskAtLocation(weekIndex, d, locationId)) return true;
+          }
+          return false;
+        }
+        // Fallback: original global per-week behaviour
         for (let d = 0; d < 7; d++) {
           const e = assignments[weekIndex][d];
           if (e.some(x => x.type === "task" && x.taskId === taskId)) {
@@ -1428,7 +1463,17 @@
         return false;
       }
 
+      // MONTHLY / YEARLY / ONE-TIME: per-location across whole 4 weeks
       if (["monthly", "yearly", "one-time"].includes(task.frequency)) {
+        if (locationId != null) {
+          for (let w = 0; w < 4; w++) {
+            for (let d = 0; d < 7; d++) {
+              if (dayHasTaskAtLocation(w, d, locationId)) return true;
+            }
+          }
+          return false;
+        }
+        // Fallback: original "once anywhere" behaviour
         for (let w = 0; w < 4; w++) {
           for (let d = 0; d < 7; d++) {
             const e = assignments[w][d];
@@ -1446,7 +1491,11 @@
     function addTaskToCell(weekIndex, dayIndex, taskId) {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
-      if (isTaskBlockedForCell(task, weekIndex, dayIndex)) {
+
+      const settings = dayCellSettings[weekIndex][dayIndex] || { startLocationId: null };
+      const locId = settings.startLocationId || null;
+
+      if (isTaskBlockedForCell(task, weekIndex, dayIndex, locId)) {
         alert("This task can't be added here based on its frequency rules.");
         return;
       }
@@ -1617,8 +1666,10 @@
           defaultOption.textContent = tasks.length === 0 && locations.length === 0 ? "No items yet" : "Add...";
           select.appendChild(defaultOption);
 
+          const locationIdForDay = settings.startLocationId || null;
+
           tasks.forEach(task => {
-            if (!isTaskBlockedForCell(task, w, d)) {
+            if (!isTaskBlockedForCell(task, w, d, locationIdForDay)) {
               const opt = document.createElement("option");
               opt.value = `task:${task.id}`;
               opt.textContent = `${task.name} (${task.lengthMinutes}m, ${formatFrequency(task.frequency)})`;
