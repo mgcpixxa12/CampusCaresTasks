@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>4-Week Task Calendar 11/30/11:16</title>
+  <title>4-Week Task Calendar</title>
 
   <!-- Google Sign-In -->
   <meta name="google-signin-client_id" content="328251555874-15b0ha0ptqme9l6hoggt9kecdvd1npqb.apps.googleusercontent.com" />
@@ -29,6 +29,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .header-left {
@@ -41,6 +43,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     header h1 {
@@ -107,7 +110,8 @@
 
     /* Calendar styles */
     .calendar-container {
-      max-width: 1100px;
+      width: 100%;
+      max-width: 1200px;
       margin: 0 auto;
     }
 
@@ -127,6 +131,8 @@
       background: #ffffff;
       margin-bottom: 10px;
       padding: 6px;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
     }
 
     .week-header {
@@ -137,6 +143,7 @@
       align-items: center;
       color: #555;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
     .week-actions {
@@ -153,8 +160,8 @@
 
     .days-row {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
       gap: 6px;
+      /* JS sets grid-template-columns based on visible days */
     }
 
     .day-cell {
@@ -249,7 +256,7 @@
     /* Task & Locations tab styles */
     .tasks-container,
     .locations-container {
-      max-width: 700px;
+      max-width: 900px;
       margin: 0 auto;
     }
 
@@ -272,6 +279,7 @@
       display: flex;
       gap: 8px;
       margin-bottom: 8px;
+      flex-wrap: wrap;
     }
 
     .form-row label {
@@ -327,6 +335,7 @@
       border: 1px solid #ddd;
       padding: 4px;
       text-align: left;
+      vertical-align: middle;
     }
 
     th {
@@ -359,6 +368,7 @@
       align-items: center;
       gap: 8px;
       margin-bottom: 4px;
+      flex-wrap: wrap;
     }
 
     .location-color-swatch {
@@ -384,9 +394,20 @@
       margin-bottom: 2px;
     }
 
+    .task-inline-input {
+      width: 70px;
+      font-size: 11px;
+      padding: 2px;
+    }
+
+    .task-inline-select {
+      font-size: 11px;
+      padding: 2px;
+    }
+
     @media (max-width: 800px) {
       .days-row {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
 
       .week-header {
@@ -395,15 +416,49 @@
         gap: 2px;
       }
     }
+
+    /* Print styles: calendar only, full page */
+    @media print {
+      body {
+        margin: 0;
+        background: #ffffff;
+      }
+
+      header,
+      .tab-buttons,
+      #tasksTab,
+      #locationsTab,
+      #printBtn {
+        display: none !important;
+      }
+
+      main {
+        padding: 0;
+      }
+
+      #calendarTab {
+        display: block !important;
+      }
+
+      .calendar-container {
+        max-width: 100%;
+        margin: 0;
+      }
+
+      .week-row {
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="header-left">
-      <h1>4-Week Planner 10:14</h1>
+      <h1>4-Week Planner</h1>
       <span id="sessionText" class="muted">Not signed in</span>
     </div>
     <div class="header-right">
+      <button id="printBtn" class="btn secondary">Print calendar</button>
       <div id="signin"></div>
       <button id="signOutBtn" class="btn secondary hidden">Sign out</button>
     </div>
@@ -423,7 +478,8 @@
           • Add tasks on <strong>Tasks</strong>, locations on <strong>Locations</strong>, then assign here.<br/>
           • Travel = +40 min (counts toward total).<br/>
           • Lunch = task with <strong>negative minutes</strong>: counts toward elapsed time, but <strong>not</strong> the total.<br/>
-          • Weekly tasks: progress shown as 1/4 per location; Daily as 1/8 per location.
+          • Weekly tasks: progress shown as 1/4 per location; Daily as 1/8 per location.<br/>
+          • Saturday/Sunday only appear if you actually schedule something on those days.
         </div>
         <div class="calendar-header-row" id="calendarDayHeader"></div>
         <div id="calendar"></div>
@@ -513,10 +569,13 @@
 
     let tasks = []; // {id, name, description, lengthMinutes, frequency, location:'all'|number}
     let nextTaskId = 1;
-    let assignments = []; // assignments[week][day] = [{type:'task', taskId} | {type:'travel', locationId}]
-    let locations = []; // {id, name, color}
+    // assignments[week][day] = [{type:'task', taskId, locationId?} | {type:'travel', locationId}]
+    let assignments = [];
+    // locations = {id, name, color}
+    let locations = [];
     let nextLocationId = 1;
-    let dayCellSettings = []; // [week][day] = { startLocationId, startTime }
+    // dayCellSettings[week][day] = { startLocationId, startTime }
+    let dayCellSettings = [];
 
     let editingTaskId = null;
     let editingLocationId = null;
@@ -681,6 +740,24 @@
               }
             }
           }
+        }
+      }
+
+      // Fill locationId on existing assignment entries based on travel timeline
+      for (let w = 0; w < 4; w++) {
+        for (let d = 0; d < 7; d++) {
+          const settings = dayCellSettings[w][d] || { startLocationId: null, startTime: null };
+          let currentLocId = settings.startLocationId || null;
+          const dayEntries = assignments[w][d];
+          dayEntries.forEach(entry => {
+            if (entry.type === "travel") {
+              currentLocId = entry.locationId || null;
+            } else if (entry.type === "task") {
+              if (!("locationId" in entry)) {
+                entry.locationId = currentLocId;
+              }
+            }
+          });
         }
       }
 
@@ -974,25 +1051,19 @@
 
     async function loadFromDriveIfPossible() {
       if (!loginState.user) {
-        console.log("Drive load skipped: no logged-in user");
         return;
       }
 
       // Don't block future attempts if we fail once
       if (driveState.firstLoadAttempted) {
-        console.log("Drive load: already attempted once, but trying again");
+        // allow another attempt
       }
       driveState.firstLoadAttempted = true;
 
-      console.log("Drive load starting. User:", loginState.user);
-
       try {
         const token = await ensureDriveTokenAsync();
-        console.log("Drive token acquired?", !!token);
 
         const q = `name = '${DRIVE_FILE_NAME}' and trashed = false`;
-        console.log("Drive search query:", q);
-
         const listRes = await fetch(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
           {
@@ -1001,8 +1072,6 @@
         );
 
         const listText = await listRes.text();
-        console.log("Drive list raw response:", listText);
-
         let listJson;
         try {
           listJson = JSON.parse(listText);
@@ -1011,11 +1080,8 @@
           return;
         }
 
-        console.log("Drive file list result:", listJson);
-
         if (listJson.files && listJson.files.length > 0) {
           const file = listJson.files[0];
-          console.log("Found planner-data.json:", file);
           driveState.fileId = file.id;
 
           const contentRes = await fetch(
@@ -1023,10 +1089,7 @@
             { headers: { 'Authorization': 'Bearer ' + token } }
           );
 
-          console.log("Content fetch status:", contentRes.status);
-
           const text = await contentRes.text();
-          console.log("planner-data.json text preview:", text.slice(0, 300));
 
           if (!contentRes.ok) {
             console.warn("Drive content fetch not OK:", text);
@@ -1041,21 +1104,12 @@
             return;
           }
 
-          console.log("Parsed Drive data object:", data);
-
           if (data && typeof data === "object") {
             tasks = Array.isArray(data.tasks) ? data.tasks : [];
             assignments = Array.isArray(data.assignments) ? data.assignments : [];
             locations = Array.isArray(data.locations) ? data.locations : [];
             dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
             normalizeCurrentState();
-
-            console.log(
-              "Applied Drive data. tasks:",
-              tasks.length,
-              "locations:",
-              locations.length
-            );
 
             // Update local cache + UI
             saveState();
@@ -1064,17 +1118,13 @@
             renderLocationsTab();
             renderCalendarHeader();
             renderCalendar();
-
             return;
           } else {
             console.warn("Drive data not an object:", data);
           }
-        } else {
-          console.log("No planner-data.json found in Drive (files array empty).");
         }
 
-        // If it gets here, it didn't load anything. Create/update file with whatever local state we have.
-        console.log("No usable Drive data; creating/updating planner-data.json from current local state.");
+        // If no file found, create one from current local state
         await createOrUpdateDriveFile();
       } catch (e) {
         console.warn("Drive load failed:", e);
@@ -1233,31 +1283,20 @@
           <td>${escapeHtml(task.name)}</td>
           <td>${escapeHtml(task.description || "")}</td>
           <td>
-            <input type="number"
-                   class="task-length-input"
-                   data-task-id="${task.id}"
-                   value="${task.lengthMinutes}"
-                   style="width:60px;" />
+            <input type="number" class="task-inline-input" value="${task.lengthMinutes}"
+              onchange="handleInlineTaskMinutesChange(${task.id}, this.value)" />
           </td>
           <td>
-            <select class="task-frequency-select" data-task-id="${task.id}">
-              <option value="daily" ${task.frequency === "daily" ? "selected" : ""}>Daily</option>
-              <option value="weekly" ${task.frequency === "weekly" ? "selected" : ""}>Weekly</option>
-              <option value="monthly" ${task.frequency === "monthly" ? "selected" : ""}>Monthly</option>
-              <option value="yearly" ${task.frequency === "yearly" ? "selected" : ""}>Yearly</option>
-              <option value="one-time" ${task.frequency === "one-time" ? "selected" : ""}>One-time</option>
+            <select class="task-inline-select"
+              onchange="handleInlineTaskFrequencyChange(${task.id}, this.value)">
+              <option value="daily"${task.frequency === "daily" ? " selected" : ""}>Daily</option>
+              <option value="weekly"${task.frequency === "weekly" ? " selected" : ""}>Weekly</option>
+              <option value="monthly"${task.frequency === "monthly" ? " selected" : ""}>Monthly</option>
+              <option value="yearly"${task.frequency === "yearly" ? " selected" : ""}>Yearly</option>
+              <option value="one-time"${task.frequency === "one-time" ? " selected" : ""}>One-time</option>
             </select>
           </td>
-          <td>
-            <select class="task-location-select" data-task-id="${task.id}">
-              <option value="all" ${task.location === "all" ? "selected" : ""}>All locations</option>
-              ${locations.map(loc => `
-                <option value="${loc.id}" ${task.location === loc.id ? "selected" : ""}>
-                  ${escapeHtml(loc.name)}
-                </option>
-              `).join("")}
-            </select>
-          </td>
+          <td>${escapeHtml(getLocationNameByValue(task.location))}</td>
           <td>
             <button onclick="startEditTask(${task.id})">Edit</button>
             <button onclick="deleteTask(${task.id})">Delete</button>
@@ -1269,50 +1308,26 @@
       wrapper.innerHTML = html;
 
       attachDragAndDropToTaskRows();
-      wireTaskRowControls();
     }
 
-    function wireTaskRowControls() {
-      // Length change
-      document.querySelectorAll(".task-length-input").forEach(input => {
-        input.addEventListener("change", () => {
-          const id = parseInt(input.dataset.taskId, 10);
-          const task = tasks.find(t => t.id === id);
-          if (!task) return;
-          const val = parseInt(input.value, 10);
-          task.lengthMinutes = isNaN(val) ? 0 : val;
-          saveState();
-          renderCalendar();
-          renderLocationsTab();
-        });
-      });
+    function handleInlineTaskMinutesChange(taskId, newValue) {
+      const mins = parseInt(newValue, 10);
+      if (isNaN(mins)) return;
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.lengthMinutes = mins;
+      saveState();
+      renderCalendar();
+      renderLocationsTab();
+    }
 
-      // Frequency change
-      document.querySelectorAll(".task-frequency-select").forEach(sel => {
-        sel.addEventListener("change", () => {
-          const id = parseInt(sel.dataset.taskId, 10);
-          const task = tasks.find(t => t.id === id);
-          if (!task) return;
-          task.frequency = sel.value;
-          saveState();
-          renderCalendar();
-          renderLocationsTab();
-        });
-      });
-
-      // Location change
-      document.querySelectorAll(".task-location-select").forEach(sel => {
-        sel.addEventListener("change", () => {
-          const id = parseInt(sel.dataset.taskId, 10);
-          const task = tasks.find(t => t.id === id);
-          if (!task) return;
-          const raw = sel.value;
-          task.location = raw === "all" ? "all" : parseInt(raw, 10);
-          saveState();
-          renderCalendar();
-          renderLocationsTab();
-        });
-      });
+    function handleInlineTaskFrequencyChange(taskId, newFreq) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.frequency = newFreq;
+      saveState();
+      renderCalendar();
+      renderLocationsTab();
     }
 
     function attachDragAndDropToTaskRows() {
@@ -1414,70 +1429,57 @@
       document.getElementById("locationFormCancelBtn").style.display = "none";
     }
 
-    // ===== Frequency rules & assignments (per-location) =====
-    function isTaskBlockedForCell(task, weekIndex, dayIndex, locationId) {
+    // ===== Helpers for location & frequency =====
+    function getCurrentLocationForDay(weekIndex, dayIndex) {
+      const settings = dayCellSettings[weekIndex][dayIndex] || { startLocationId: null, startTime: null };
+      let currentLocId = settings.startLocationId || null;
+      const dayEntries = assignments[weekIndex][dayIndex] || [];
+      dayEntries.forEach(entry => {
+        if (entry.type === "travel") {
+          currentLocId = entry.locationId || null;
+        }
+      });
+      return currentLocId;
+    }
+
+    function isTaskBlockedForLocation(task, weekIndex, dayIndex, targetLocationId) {
       const taskId = task.id;
-      const entries = assignments[weekIndex][dayIndex];
 
-      // Helper: does this day contain this task at a given location?
-      function dayHasTaskAtLocation(w, d, locFilter) {
-        const settings = dayCellSettings[w][d] || { startLocationId: null };
-        let currentLocId = settings.startLocationId || null;
-        const dayEntries = assignments[w][d];
-
-        for (const entry of dayEntries) {
-          if (entry.type === "travel") {
-            currentLocId = entry.locationId || null;
-          } else if (entry.type === "task" && entry.taskId === taskId) {
-            if (locFilter == null || currentLocId === locFilter) {
-              return true;
-            }
-          }
-        }
-        return false;
-      }
-
-      // DAILY: per-day; if location given, per-location-per-day
+      // Daily: once per day per location
       if (task.frequency === "daily") {
-        if (locationId != null) {
-          return dayHasTaskAtLocation(weekIndex, dayIndex, locationId);
-        }
-        return entries.some(e => e.type === "task" && e.taskId === taskId);
+        const entries = assignments[weekIndex][dayIndex] || [];
+        return entries.some(e =>
+          e.type === "task" &&
+          e.taskId === taskId &&
+          (e.locationId || null) === (targetLocationId || null)
+        );
       }
 
-      // WEEKLY: per-week; if location given, per-location-per-week
+      // Weekly: once per week per location
       if (task.frequency === "weekly") {
-        if (locationId != null) {
-          for (let d = 0; d < 7; d++) {
-            if (dayHasTaskAtLocation(weekIndex, d, locationId)) return true;
-          }
-          return false;
-        }
-        // Fallback: original global per-week behaviour
         for (let d = 0; d < 7; d++) {
-          const e = assignments[weekIndex][d];
-          if (e.some(x => x.type === "task" && x.taskId === taskId)) {
+          const entries = assignments[weekIndex][d] || [];
+          if (entries.some(e =>
+            e.type === "task" &&
+            e.taskId === taskId &&
+            (e.locationId || null) === (targetLocationId || null)
+          )) {
             return true;
           }
         }
         return false;
       }
 
-      // MONTHLY / YEARLY / ONE-TIME: per-location across whole 4 weeks
+      // Monthly / Yearly / One-time: once in the whole 4-week planner per location
       if (["monthly", "yearly", "one-time"].includes(task.frequency)) {
-        if (locationId != null) {
-          for (let w = 0; w < 4; w++) {
-            for (let d = 0; d < 7; d++) {
-              if (dayHasTaskAtLocation(w, d, locationId)) return true;
-            }
-          }
-          return false;
-        }
-        // Fallback: original "once anywhere" behaviour
         for (let w = 0; w < 4; w++) {
           for (let d = 0; d < 7; d++) {
-            const e = assignments[w][d];
-            if (e.some(x => x.type === "task" && x.taskId === taskId)) {
+            const entries = assignments[w][d] || [];
+            if (entries.some(e =>
+              e.type === "task" &&
+              e.taskId === taskId &&
+              (e.locationId || null) === (targetLocationId || null)
+            )) {
               return true;
             }
           }
@@ -1488,18 +1490,25 @@
       return false;
     }
 
+    // ===== Frequency rules & assignments =====
     function addTaskToCell(weekIndex, dayIndex, taskId) {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
-      const settings = dayCellSettings[weekIndex][dayIndex] || { startLocationId: null };
-      const locId = settings.startLocationId || null;
+      const currentLocId = getCurrentLocationForDay(weekIndex, dayIndex);
 
-      if (isTaskBlockedForCell(task, weekIndex, dayIndex, locId)) {
-        alert("This task can't be added here based on its frequency rules.");
+      if (isTaskBlockedForLocation(task, weekIndex, dayIndex, currentLocId)) {
+        alert("This task can't be added here based on its frequency rules for this location.");
         return;
       }
-      assignments[weekIndex][dayIndex].push({ type: "task", taskId });
+
+      // When adding, record the locationId snapshot
+      assignments[weekIndex][dayIndex].push({
+        type: "task",
+        taskId,
+        locationId: currentLocId || null
+      });
+
       renderCalendar();
       renderLocationsTab();
       saveState();
@@ -1547,9 +1556,33 @@
       headerRow.innerHTML = "";
     }
 
+    function computeVisibleDayIndexes() {
+      const visible = [];
+      // Always show Monday–Friday (0–4)
+      for (let d = 0; d <= 4; d++) {
+        visible.push(d);
+      }
+      // For Saturday (5) and Sunday (6), only show if any content exists
+      for (let d = 5; d <= 6; d++) {
+        let used = false;
+        for (let w = 0; w < 4 && !used; w++) {
+          const entries = (assignments[w] && assignments[w][d]) || [];
+          const settings = (dayCellSettings[w] && dayCellSettings[w][d]) || { startLocationId: null, startTime: null };
+          if (entries.length > 0 || settings.startLocationId || settings.startTime) {
+            used = true;
+          }
+        }
+        if (used) visible.push(d);
+      }
+      return visible;
+    }
+
     function renderCalendar() {
       const calendarEl = document.getElementById("calendar");
       calendarEl.innerHTML = "";
+
+      const visibleDayIndexes = computeVisibleDayIndexes();
+      const colCount = visibleDayIndexes.length || 5;
 
       for (let w = 0; w < 4; w++) {
         const weekRow = document.createElement("div");
@@ -1598,10 +1631,11 @@
 
         const daysRow = document.createElement("div");
         daysRow.className = "days-row";
+        daysRow.style.gridTemplateColumns = `repeat(${colCount}, minmax(0, 1fr))`;
 
         let weekTotalMinutes = 0;
 
-        for (let d = 0; d < 7; d++) {
+        for (const d of visibleDayIndexes) {
           const dayCell = document.createElement("div");
           dayCell.className = "day-cell";
 
@@ -1666,10 +1700,11 @@
           defaultOption.textContent = tasks.length === 0 && locations.length === 0 ? "No items yet" : "Add...";
           select.appendChild(defaultOption);
 
-          const locationIdForDay = settings.startLocationId || null;
+          const currentLocIdForAdd = getCurrentLocationForDay(w, d);
 
           tasks.forEach(task => {
-            if (!isTaskBlockedForCell(task, w, d, locationIdForDay)) {
+            // Only show tasks that are allowed at the *current location* for this day
+            if (!isTaskBlockedForLocation(task, w, d, currentLocIdForAdd)) {
               const opt = document.createElement("option");
               opt.value = `task:${task.id}`;
               opt.textContent = `${task.name} (${task.lengthMinutes}m, ${formatFrequency(task.frequency)})`;
@@ -1741,6 +1776,9 @@
                 dayTotalMinutes += len;
               }
               currentTimeMinutes += len;
+
+              // Use stored locationId if present (for color)
+              entryLocId = "locationId" in entry ? entry.locationId : currentLocId;
 
               infoSpan.innerHTML = `<span class="task-name">${escapeHtml(task.name)}</span> (${task.lengthMinutes}m)`;
             } else if (entry.type === "travel") {
@@ -1862,7 +1900,8 @@
             if (entry.type === "travel") {
               currentLocId = entry.locationId || null;
             } else if (entry.type === "task") {
-              if (currentLocId === locationId) {
+              const taskLocId = "locationId" in entry ? entry.locationId : currentLocId;
+              if (taskLocId === locationId) {
                 const taskId = entry.taskId;
                 let rec = stats.get(taskId);
                 if (!rec) {
@@ -1946,6 +1985,11 @@
       renderCalendarHeader();
       renderCalendar();
       initLogin();
+
+      const printBtn = document.getElementById("printBtn");
+      if (printBtn) {
+        printBtn.addEventListener("click", () => window.print());
+      }
     });
   </script>
 </body>
