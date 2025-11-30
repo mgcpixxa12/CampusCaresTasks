@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>4-Week Task Calendar 11/30/12:00</title>
+  <title>4-Week Task Calendar 11/30/11:16</title>
 
   <!-- Google Sign-In -->
   <meta name="google-signin-client_id" content="328251555874-15b0ha0ptqme9l6hoggt9kecdvd1npqb.apps.googleusercontent.com" />
@@ -384,6 +384,33 @@
       margin-bottom: 2px;
     }
 
+    /* 🔹 Bulk edit card styles */
+    .tasks-bulk-card {
+      background: #ffffff;
+      border-radius: 6px;
+      border: 1px dashed #bbb;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+
+    .tasks-bulk-card h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+    }
+
+    .tasks-bulk-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .tasks-bulk-row > div {
+      flex: 1;
+      min-width: 140px;
+    }
+
     @media (max-width: 800px) {
       .days-row {
         grid-template-columns: repeat(2, 1fr);
@@ -471,6 +498,41 @@
           </div>
           <button id="taskFormSubmitBtn" onclick="handleTaskFormSubmit()">Add Task to List</button>
           <button id="taskFormCancelBtn" style="display:none;margin-left:8px;" onclick="cancelEditTask()">Cancel Edit</button>
+        </div>
+
+        <!-- 🔹 NEW: Bulk edit frequencies card -->
+        <div class="tasks-bulk-card">
+          <h3>Bulk Edit Task Frequencies</h3>
+          <div class="tasks-bulk-row">
+            <div>
+              <label for="bulkFromFrequency">Change all tasks with frequency:</label>
+              <select id="bulkFromFrequency">
+                <option value="">-- Select --</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+                <option value="one-time">One-time</option>
+              </select>
+            </div>
+            <div>
+              <label for="bulkToFrequency">Set their frequency to:</label>
+              <select id="bulkToFrequency">
+                <option value="">-- Select --</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+                <option value="one-time">One-time</option>
+              </select>
+            </div>
+            <div style="flex:0;">
+              <button class="btn" type="button" onclick="handleBulkFrequencyChange()">Apply</button>
+            </div>
+          </div>
+          <div class="muted" style="margin-top:4px;">
+            Example: set “from: Daily” → “to: Monthly” to fix mis-labeled tasks in one click.
+          </div>
         </div>
 
         <div class="tasks-list-card">
@@ -609,21 +671,6 @@
       if (!id) return null;
       const loc = locations.find(l => l.id === id);
       return loc ? loc.color : null;
-    }
-
-    // Get the current location at the *end* of the day (where new tasks will be added)
-    function getCurrentLocationForDay(weekIndex, dayIndex) {
-      const settings = dayCellSettings[weekIndex][dayIndex] || { startLocationId: null };
-      let currentLocId = settings.startLocationId || null;
-      const entries = assignments[weekIndex][dayIndex] || [];
-
-      entries.forEach(entry => {
-        if (entry.type === "travel") {
-          currentLocId = entry.locationId || null;
-        }
-      });
-
-      return currentLocId;
     }
 
     // ===== Normalization & local persistence =====
@@ -901,16 +948,13 @@
     function ensureDriveTokenAsync() {
       return new Promise((resolve, reject) => {
         if (!loginState.user) {
-          console.log("ensureDriveTokenAsync: Not signed in.");
           return reject(new Error("Not signed in; Drive sync disabled."));
         }
         if (!(window.google && google.accounts && google.accounts.oauth2)) {
-          console.log("ensureDriveTokenAsync: google.accounts.oauth2 not ready.");
           return reject(new Error("Google OAuth2 library not ready"));
         }
 
         if (driveState.accessToken) {
-          console.log("ensureDriveTokenAsync: Reusing cached access token.");
           return resolve(driveState.accessToken);
         }
 
@@ -924,16 +968,13 @@
 
         driveState.tokenClient.callback = (tokenResponse) => {
           if (tokenResponse.error) {
-            console.warn("Token error:", tokenResponse);
             reject(tokenResponse);
           } else {
-            console.log("Token acquired:", tokenResponse);
             driveState.accessToken = tokenResponse.access_token;
             resolve(driveState.accessToken);
           }
         };
 
-        console.log("Requesting Drive access token…");
         driveState.tokenClient.requestAccessToken({ prompt: '' });
       });
     }
@@ -1186,6 +1227,44 @@
       saveState();
     }
 
+    // 🔹 Bulk frequency change handler
+    function handleBulkFrequencyChange() {
+      const fromSelect = document.getElementById("bulkFromFrequency");
+      const toSelect = document.getElementById("bulkToFrequency");
+
+      const from = fromSelect.value;
+      const to = toSelect.value;
+
+      if (!from || !to) {
+        alert("Please select both the current frequency and the new frequency.");
+        return;
+      }
+      if (from === to) {
+        alert("The from and to frequencies are the same. Pick two different ones.");
+        return;
+      }
+
+      let changed = 0;
+      tasks.forEach(t => {
+        if (t.frequency === from) {
+          t.frequency = to;
+          changed++;
+        }
+      });
+
+      if (changed === 0) {
+        alert("No tasks currently use that frequency.");
+        return;
+      }
+
+      saveState();
+      renderTaskList();
+      renderCalendar();
+      renderLocationsTab();
+
+      alert(`Updated ${changed} task(s) from ${formatFrequency(from)} to ${formatFrequency(to)}.`);
+    }
+
     function startEditTask(taskId) {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
@@ -1369,47 +1448,29 @@
     }
 
     // ===== Frequency rules & assignments =====
-    function isTaskBlockedForCell(task, weekIndex, dayIndex, locationIdForThisAdd) {
-      const targetLocKey = String(locationIdForThisAdd || "none");
+    function isTaskBlockedForCell(task, weekIndex, dayIndex) {
+      const taskId = task.id;
+      const entries = assignments[weekIndex][dayIndex];
 
-      function taskAppearsInDayAtLocation(dayW, dayD) {
-        const settings = dayCellSettings[dayW][dayD] || { startLocationId: null };
-        let curLoc = settings.startLocationId || null;
-        const entries = assignments[dayW][dayD] || [];
-
-        for (const entry of entries) {
-          if (entry.type === "travel") {
-            curLoc = entry.locationId || null;
-          } else if (entry.type === "task" && entry.taskId === task.id) {
-            const key = String(curLoc || "none");
-            if (key === targetLocKey) {
-              return true;
-            }
-          }
-        }
-        return false;
-      }
-
-      // Daily: once per location per day
       if (task.frequency === "daily") {
-        return taskAppearsInDayAtLocation(weekIndex, dayIndex);
+        return entries.some(e => e.type === "task" && e.taskId === taskId);
       }
 
-      // Weekly: once per location per week
       if (task.frequency === "weekly") {
         for (let d = 0; d < 7; d++) {
-          if (taskAppearsInDayAtLocation(weekIndex, d)) {
+          const e = assignments[weekIndex][d];
+          if (e.some(x => x.type === "task" && x.taskId === taskId)) {
             return true;
           }
         }
         return false;
       }
 
-      // Monthly / Yearly / One-time: once per location in the 4-week block
       if (["monthly", "yearly", "one-time"].includes(task.frequency)) {
         for (let w = 0; w < 4; w++) {
           for (let d = 0; d < 7; d++) {
-            if (taskAppearsInDayAtLocation(w, d)) {
+            const e = assignments[w][d];
+            if (e.some(x => x.type === "task" && x.taskId === taskId)) {
               return true;
             }
           }
@@ -1423,14 +1484,10 @@
     function addTaskToCell(weekIndex, dayIndex, taskId) {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
-
-      const currentLocId = getCurrentLocationForDay(weekIndex, dayIndex);
-
-      if (isTaskBlockedForCell(task, weekIndex, dayIndex, currentLocId)) {
+      if (isTaskBlockedForCell(task, weekIndex, dayIndex)) {
         alert("This task can't be added here based on its frequency rules.");
         return;
       }
-
       assignments[weekIndex][dayIndex].push({ type: "task", taskId });
       renderCalendar();
       renderLocationsTab();
@@ -1598,17 +1655,8 @@
           defaultOption.textContent = tasks.length === 0 && locations.length === 0 ? "No items yet" : "Add...";
           select.appendChild(defaultOption);
 
-          const currentLocIdForDropdown = getCurrentLocationForDay(w, d);
-
           tasks.forEach(task => {
-            // Filter by location context: "all" shows everywhere, specific locations only when we're there
-            if (task.location !== "all") {
-              if (!currentLocIdForDropdown || task.location !== currentLocIdForDropdown) {
-                return;
-              }
-            }
-
-            if (!isTaskBlockedForCell(task, w, d, currentLocIdForDropdown)) {
+            if (!isTaskBlockedForCell(task, w, d)) {
               const opt = document.createElement("option");
               opt.value = `task:${task.id}`;
               opt.textContent = `${task.name} (${task.lengthMinutes}m, ${formatFrequency(task.frequency)})`;
