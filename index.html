@@ -158,7 +158,7 @@
       padding: 2px;
     }
 
-    .days-row {
+    .s-row {
       display: grid;
       gap: 6px;
       /* JS sets grid-template-columns based on visible days */
@@ -1768,19 +1768,29 @@
             const infoSpan = document.createElement("span");
 
             if (entry.type === "task") {
-              const task = tasks.find(t => t.id === entry.taskId);
-              if (!task) return;
+  const task = tasks.find(t => t.id === entry.taskId);
+  if (!task) return;
 
-              const len = Math.abs(task.lengthMinutes || 0);
-              if (task.lengthMinutes >= 0) {
-                dayTotalMinutes += len;
-              }
-              currentTimeMinutes += len;
+  const len = Math.abs(task.lengthMinutes || 0);
 
-              // Use stored locationId if present (for color)
-              entryLocId = "locationId" in entry ? entry.locationId : currentLocId;
+  // NEW: capture the start time *before* advancing
+  const startLabel = formatMinutesTo12hTime(currentTimeMinutes);
 
-              infoSpan.innerHTML = `<span class="task-name">${escapeHtml(task.name)}</span> (${task.lengthMinutes}m)`;
+  // Positive minutes count toward total, negative (e.g. lunch) do not,
+  // but both still advance the clock.
+  if (task.lengthMinutes >= 0) {
+    dayTotalMinutes += len;
+  }
+  currentTimeMinutes += len;
+
+  // Use stored locationId if present (for color)
+  entryLocId = "locationId" in entry ? entry.locationId : currentLocId;
+
+  // NEW: show start time + length
+  infoSpan.innerHTML =
+    `<span class="task-name">${escapeHtml(task.name)}</span> ` +
+    `(${startLabel}, ${task.lengthMinutes}m)`;
+
             } else if (entry.type === "travel") {
               const locName = getLocationNameByValue(entry.locationId);
               const travelStart = currentTimeMinutes;
