@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>4-Week Task Calendar Yup</title>
+  <title>Cool</title>
 
   <!-- Google Sign-In -->
   <meta name="google-signin-client_id" content="328251555874-15b0ha0ptqme9l6hoggt9kecdvd1npqb.apps.googleusercontent.com" />
@@ -79,6 +79,9 @@
     .tab-buttons {
       display: flex;
       background: #34495e;
+      position: sticky;       /* make nav bar “frozen” */
+      top: 0;
+      z-index: 50;
     }
 
     .tab-buttons button {
@@ -119,6 +122,11 @@
       margin-bottom: 10px;
       font-size: 13px;
       color: #555;
+    }
+
+    .legend .drag-mode-option {
+      margin-left: 8px;
+      font-size: 12px;
     }
 
     .calendar-header-row {
@@ -227,8 +235,7 @@
     .task-list li {
       margin-bottom: 2px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 4px;
       padding: 2px 3px;
       border-radius: 3px;
@@ -243,6 +250,19 @@
       font-weight: bold;
     }
 
+    /* time box to the LEFT of the task text */
+    .task-time-box {
+      min-width: 46px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      border: 1px solid #ccc;
+      background: #ffffff;
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
     .task-remove-btn {
       border: none;
       background: #e74c3c;
@@ -251,6 +271,16 @@
       font-size: 10px;
       padding: 0 4px;
       cursor: pointer;
+      margin-left: auto; /* push delete button to far right */
+    }
+
+    /* click-to-strike styling */
+    .task-list li.done {
+      opacity: 0.6;
+    }
+
+    .task-list li.done .task-name {
+      text-decoration: line-through;
     }
 
     /* Task & Locations tab styles */
@@ -428,7 +458,8 @@
       .tab-buttons,
       #tasksTab,
       #locationsTab,
-      #printBtn {
+      #printBtn,
+      #resetDoneBtn {
         display: none !important;
       }
 
@@ -459,6 +490,7 @@
     </div>
     <div class="header-right">
       <button id="printBtn" class="btn secondary">Print calendar</button>
+      <button id="resetDoneBtn" class="btn secondary">Reset checkmarks</button>
       <div id="signin"></div>
       <button id="signOutBtn" class="btn secondary hidden">Sign out</button>
     </div>
@@ -479,7 +511,14 @@
           • Travel = +40 min (counts toward total).<br/>
           • Lunch = task with <strong>negative minutes</strong>: counts toward elapsed time, but <strong>not</strong> the total.<br/>
           • Weekly tasks: progress shown as 1/4 per location; Daily as 1/8 per location.<br/>
-          • Saturday/Sunday only appear if you actually schedule something on those days.
+          • Saturday/Sunday only appear if you actually schedule something on those days.<br/>
+          <strong>Drag mode:</strong>
+          <label class="drag-mode-option">
+            <input type="radio" name="dragMode" value="insert" checked> Insert
+          </label>
+          <label class="drag-mode-option">
+            <input type="radio" name="dragMode" value="swap"> Swap
+          </label>
         </div>
         <div class="calendar-header-row" id="calendarDayHeader"></div>
         <div id="calendar"></div>
@@ -569,7 +608,7 @@
 
     let tasks = []; // {id, name, description, lengthMinutes, frequency, location:'all'|number}
     let nextTaskId = 1;
-    // assignments[week][day] = [{type:'task', taskId, locationId?} | {type:'travel', locationId}]
+    // assignments[week][day] = [{type:'task', taskId, locationId?, done?} | {type:'travel', locationId}]
     let assignments = [];
     // locations = {id, name, color}
     let locations = [];
@@ -581,6 +620,9 @@
     let editingLocationId = null;
     let draggedTaskIndex = null;
     let calendarDragSource = null;
+
+    // Drag mode: 'insert' or 'swap'
+    let dragMode = 'insert';
 
     // ===== Local storage keys =====
     const STORAGE_KEY_TASKS = "planner_tasks_v1";
@@ -709,14 +751,19 @@
             if (!Array.isArray(assignments[w][d])) assignments[w][d] = [];
             assignments[w][d] = assignments[w][d].map(entry => {
               if (typeof entry === "number") {
-                return { type: "task", taskId: entry };
+                return { type: "task", taskId: entry, done: false };
               } else if (entry && typeof entry === "object") {
                 if (!entry.type) {
-                  return { type: "task", taskId: entry.taskId || entry.id || 0 };
+                  return {
+                    type: "task",
+                    taskId: entry.taskId || entry.id || 0,
+                    locationId: entry.locationId || null,
+                    done: !!entry.done
+                  };
                 }
                 return entry;
               }
-              return { type: "task", taskId: 0 };
+              return { type: "task", taskId: 0, done: false };
             });
           }
         }
@@ -743,13 +790,14 @@
         }
       }
 
-      // Fill locationId on existing assignment entries based on travel timeline
+      // Fill locationId & done on existing assignment entries based on travel timeline
       for (let w = 0; w < 4; w++) {
         for (let d = 0; d < 7; d++) {
           const settings = dayCellSettings[w][d] || { startLocationId: null, startTime: null };
           let currentLocId = settings.startLocationId || null;
           const dayEntries = assignments[w][d];
           dayEntries.forEach(entry => {
+            if (!("done" in entry)) entry.done = false;
             if (entry.type === "travel") {
               currentLocId = entry.locationId || null;
             } else if (entry.type === "task") {
@@ -1506,7 +1554,8 @@
       assignments[weekIndex][dayIndex].push({
         type: "task",
         taskId,
-        locationId: currentLocId || null
+        locationId: currentLocId || null,
+        done: false
       });
 
       renderCalendar();
@@ -1530,6 +1579,22 @@
       saveState();
     }
 
+    // Reset all "done" flags
+    function resetAllDone() {
+      for (let w = 0; w < 4; w++) {
+        for (let d = 0; d < 7; d++) {
+          const dayEntries = assignments[w][d] || [];
+          dayEntries.forEach(entry => {
+            if (entry && entry.type === "task") {
+              entry.done = false;
+            }
+          });
+        }
+      }
+      saveState();
+      renderCalendar();
+    }
+
     // ===== Copy week =====
     function copyWeek(sourceWeek, targetWeek) {
       if (
@@ -1538,7 +1603,9 @@
         sourceWeek === targetWeek
       ) return;
 
-      assignments[targetWeek] = assignments[sourceWeek].map(day => day.map(e => ({ ...e })));
+      assignments[targetWeek] = assignments[sourceWeek].map(day =>
+        day.map(e => ({ ...e }))
+      );
       dayCellSettings[targetWeek] = dayCellSettings[sourceWeek].map(s => ({
         startLocationId: s.startLocationId || null,
         startTime: s.startTime || null
@@ -1764,45 +1831,54 @@
             li.dataset.entryIndex = String(entryIndex);
             li.draggable = true;
 
+            if (entry.done) {
+              li.classList.add("done");
+            }
+
             let entryLocId = currentLocId;
             const infoSpan = document.createElement("span");
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "task-time-box";
 
             if (entry.type === "task") {
-  const task = tasks.find(t => t.id === entry.taskId);
-  if (!task) return;
+              const task = tasks.find(t => t.id === entry.taskId);
+              if (!task) return;
 
-  const len = Math.abs(task.lengthMinutes || 0);
+              const len = Math.abs(task.lengthMinutes || 0);
 
-  // NEW: capture the start time *before* advancing
-  const startLabel = formatMinutesTo12hTime(currentTimeMinutes);
+              // Capture the start time *before* advancing
+              const startLabel = formatMinutesTo12hTime(currentTimeMinutes);
+              timeSpan.textContent = startLabel;
 
-  // Positive minutes count toward total, negative (e.g. lunch) do not,
-  // but both still advance the clock.
-  if (task.lengthMinutes >= 0) {
-    dayTotalMinutes += len;
-  }
-  currentTimeMinutes += len;
+              // Positive minutes count toward total, negative (e.g. lunch) do not,
+              // but both still advance the clock.
+              if (task.lengthMinutes >= 0) {
+                dayTotalMinutes += len;
+              }
+              currentTimeMinutes += len;
 
-  // Use stored locationId if present (for color)
-  entryLocId = "locationId" in entry ? entry.locationId : currentLocId;
+              // Use stored locationId if present (for color)
+              entryLocId = "locationId" in entry ? entry.locationId : currentLocId;
 
-  // NEW: show start time + length
-  infoSpan.innerHTML =
-    `<span class="task-name">${escapeHtml(task.name)}</span> ` +
-    `(${startLabel}, ${task.lengthMinutes}m)`;
+              // show name + length; time is in its own box to the LEFT
+              infoSpan.innerHTML =
+                `<span class="task-name">${escapeHtml(task.name)}</span> ` +
+                `(${task.lengthMinutes}m)`;
 
             } else if (entry.type === "travel") {
               const locName = getLocationNameByValue(entry.locationId);
               const travelStart = currentTimeMinutes;
               const travelDuration = 40;
+              const timeLabel = formatMinutesTo12hTime(travelStart);
+              timeSpan.textContent = timeLabel;
+
               dayTotalMinutes += travelDuration;
               currentTimeMinutes += travelDuration;
               currentLocId = entry.locationId || null;
               entryLocId = currentLocId;
 
-              const timeLabel = formatMinutesTo12hTime(travelStart);
               infoSpan.innerHTML =
-                `<span class="task-name">Travel</span> → ${escapeHtml(locName)} at ${timeLabel}`;
+                `<span class="task-name">Travel</span> → ${escapeHtml(locName)} (40m)`;
             }
 
             const color = getLocationColorById(entryLocId);
@@ -1811,10 +1887,20 @@
             const removeBtn = document.createElement("button");
             removeBtn.className = "task-remove-btn";
             removeBtn.textContent = "✕";
-            removeBtn.addEventListener("click", () => {
+            removeBtn.addEventListener("click", (e) => {
+              e.stopPropagation(); // don't toggle done when clicking delete
               removeAssignment(w, d, entryIndex);
             });
 
+            // Click-to-strike / un-strike
+            li.addEventListener("click", (e) => {
+              if (e.target.closest(".task-remove-btn")) return;
+              entry.done = !entry.done;
+              saveState();
+              renderCalendar();
+            });
+
+            li.appendChild(timeSpan);
             li.appendChild(infoSpan);
             li.appendChild(removeBtn);
             taskList.appendChild(li);
@@ -1840,17 +1926,51 @@
               const source = calendarDragSource;
               const targetWeek = w;
               const targetDay = d;
-              let targetIndex = entryIndex;
+              const targetIndex = entryIndex;
 
               const sourceEntries = assignments[source.weekIndex][source.dayIndex];
-              const entryObj = sourceEntries.splice(source.entryIndex, 1)[0];
+              const targetEntries = assignments[targetWeek][targetDay];
 
-              if (source.weekIndex === targetWeek && source.dayIndex === targetDay && targetIndex > source.entryIndex) {
-                targetIndex--;
+              if (!sourceEntries || !targetEntries) {
+                calendarDragSource = null;
+                return;
               }
 
-              const targetEntries = assignments[targetWeek][targetDay];
-              targetEntries.splice(targetIndex, 0, entryObj);
+              if (dragMode === 'swap') {
+                // Swap positions of the two entries
+                if (
+                  source.weekIndex === targetWeek &&
+                  source.dayIndex === targetDay &&
+                  source.entryIndex === targetIndex
+                ) {
+                  calendarDragSource = null;
+                  return;
+                }
+
+                const sourceEntry = sourceEntries[source.entryIndex];
+                const destEntry = targetEntries[targetIndex];
+                if (!sourceEntry || !destEntry) {
+                  calendarDragSource = null;
+                  return;
+                }
+
+                sourceEntries[source.entryIndex] = destEntry;
+                targetEntries[targetIndex] = sourceEntry;
+              } else {
+                // Insert mode (original behavior)
+                const entryObj = sourceEntries.splice(source.entryIndex, 1)[0];
+                if (!entryObj) {
+                  calendarDragSource = null;
+                  return;
+                }
+
+                let insertIndex = targetIndex;
+                if (source.weekIndex === targetWeek && source.dayIndex === targetDay && insertIndex > source.entryIndex) {
+                  insertIndex--;
+                }
+
+                targetEntries.splice(insertIndex, 0, entryObj);
+              }
 
               calendarDragSource = null;
               saveState();
@@ -1859,7 +1979,7 @@
             });
           });
 
-          // Drop into empty / bottom of list
+          // Drop into empty / bottom of list (always insert behavior)
           taskList.addEventListener("dragover", e => e.preventDefault());
           taskList.addEventListener("drop", e => {
             e.preventDefault();
@@ -2000,6 +2120,18 @@
       if (printBtn) {
         printBtn.addEventListener("click", () => window.print());
       }
+
+      const resetBtn = document.getElementById("resetDoneBtn");
+      if (resetBtn) {
+        resetBtn.addEventListener("click", resetAllDone);
+      }
+
+      const dragModeInputs = document.querySelectorAll('input[name="dragMode"]');
+      dragModeInputs.forEach(input => {
+        input.addEventListener("change", () => {
+          dragMode = input.value === "swap" ? "swap" : "insert";
+        });
+      });
     });
   </script>
 </body>
