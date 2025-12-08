@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cool</title>
+  <title>Cool Man</title>
 
   <!-- Google Sign-In -->
   <meta name="google-signin-client_id" content="328251555874-15b0ha0ptqme9l6hoggt9kecdvd1npqb.apps.googleusercontent.com" />
@@ -519,6 +519,20 @@
           <label class="drag-mode-option">
             <input type="radio" name="dragMode" value="swap"> Swap
           </label>
+          <br/>
+          <strong>Weeks:</strong>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="0" checked> Week 1
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="1" checked> Week 2
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="2" checked> Week 3
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="3" checked> Week 4
+          </label>
         </div>
         <div class="calendar-header-row" id="calendarDayHeader"></div>
         <div id="calendar"></div>
@@ -616,6 +630,9 @@
     // dayCellSettings[week][day] = { startLocationId, startTime }
     let dayCellSettings = [];
 
+    // Week visibility (manual toggles): Week 1–4
+    let weekVisibility = [true, true, true, true];
+
     let editingTaskId = null;
     let editingLocationId = null;
     let draggedTaskIndex = null;
@@ -629,6 +646,7 @@
     const STORAGE_KEY_ASSIGNMENTS = "planner_assignments_v1";
     const STORAGE_KEY_LOCATIONS = "planner_locations_v1";
     const STORAGE_KEY_DAYCELLSETTINGS = "planner_daycellsettings_v1";
+    const STORAGE_KEY_WEEK_VISIBILITY = "planner_weekVisibility_v1";
 
     // ===== Google login & Drive config =====
     const ADMIN_EMAILS = new Set(['johnpaulcheramie@gmail.com']);
@@ -828,6 +846,7 @@
       let storedAssignments = null;
       let storedLocations = null;
       let storedSettings = null;
+      let storedWeekVisibility = null;
 
       if (window.localStorage) {
         try {
@@ -835,6 +854,7 @@
           storedAssignments = localStorage.getItem(STORAGE_KEY_ASSIGNMENTS);
           storedLocations = localStorage.getItem(STORAGE_KEY_LOCATIONS);
           storedSettings = localStorage.getItem(STORAGE_KEY_DAYCELLSETTINGS);
+          storedWeekVisibility = localStorage.getItem(STORAGE_KEY_WEEK_VISIBILITY);
         } catch (e) {
           console.warn("Unable to load state:", e);
         }
@@ -844,6 +864,18 @@
       assignments = storedAssignments ? JSON.parse(storedAssignments) || [] : [];
       locations = storedLocations ? JSON.parse(storedLocations) || [] : [];
       dayCellSettings = storedSettings ? JSON.parse(storedSettings) || [] : [];
+
+      // Load week visibility, defaulting to all visible
+      if (storedWeekVisibility) {
+        try {
+          const arr = JSON.parse(storedWeekVisibility);
+          if (Array.isArray(arr) && arr.length === 4) {
+            weekVisibility = arr.map(v => !!v);
+          }
+        } catch (e) {
+          console.warn("Unable to parse week visibility:", e);
+        }
+      }
 
       normalizeCurrentState();
     }
@@ -856,6 +888,7 @@
           localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(assignments));
           localStorage.setItem(STORAGE_KEY_LOCATIONS, JSON.stringify(locations));
           localStorage.setItem(STORAGE_KEY_DAYCELLSETTINGS, JSON.stringify(dayCellSettings));
+          localStorage.setItem(STORAGE_KEY_WEEK_VISIBILITY, JSON.stringify(weekVisibility));
         } catch (e) {
           console.warn("Unable to save state:", e);
         }
@@ -1051,7 +1084,8 @@
           tasks,
           assignments,
           locations,
-          dayCellSettings
+          dayCellSettings,
+          weekVisibility
         });
 
         if (!driveState.fileId) {
@@ -1157,6 +1191,11 @@
             assignments = Array.isArray(data.assignments) ? data.assignments : [];
             locations = Array.isArray(data.locations) ? data.locations : [];
             dayCellSettings = Array.isArray(data.dayCellSettings) ? data.dayCellSettings : [];
+            if (Array.isArray(data.weekVisibility) && data.weekVisibility.length === 4) {
+              weekVisibility = data.weekVisibility.map(v => !!v);
+            } else {
+              weekVisibility = [true, true, true, true];
+            }
             normalizeCurrentState();
 
             // Update local cache + UI
@@ -1652,6 +1691,9 @@
       const colCount = visibleDayIndexes.length || 5;
 
       for (let w = 0; w < 4; w++) {
+        // Skip weeks that are toggled off
+        if (!weekVisibility[w]) continue;
+
         const weekRow = document.createElement("div");
         weekRow.className = "week-row";
 
@@ -2131,6 +2173,22 @@
         input.addEventListener("change", () => {
           dragMode = input.value === "swap" ? "swap" : "insert";
         });
+      });
+
+      // Week visibility toggles
+      const weekToggles = document.querySelectorAll('.week-toggle');
+      weekToggles.forEach(cb => {
+        const w = parseInt(cb.dataset.week, 10);
+        if (!isNaN(w) && w >= 0 && w < 4) {
+          // Sync checkbox with saved state
+          cb.checked = weekVisibility[w];
+
+          cb.addEventListener('change', () => {
+            weekVisibility[w] = cb.checked;
+            saveState();
+            renderCalendar();
+          });
+        }
       });
     });
   </script>
