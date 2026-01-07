@@ -1,0 +1,326 @@
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;padding:0;background:#f4f4f4;color:#333}
+header{background:#2c3e50;color:#ecf0f1;padding:10px 15px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.header-left{display:flex;align-items:baseline;gap:8px}
+.header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px}
+.muted{color:#cbd4e3;font-size:12px}
+.btn{appearance:none;border:none;padding:6px 10px;border-radius:8px;cursor:pointer;font-weight:600;background:#2b3f8f;color:#fff;font-size:12px}
+.btn.secondary{background:#1f2b5b}
+.hidden{display:none!important}
+.tab-buttons{display:flex;background:#34495e;position:sticky;top:0;z-index:50}
+.tab-buttons button{flex:1;padding:10px;border:none;background:#34495e;color:#ecf0f1;cursor:pointer;font-size:14px}
+.tab-buttons button.active{background:#1abc9c;font-weight:700}
+main{padding:10px}
+.tab{display:none}
+.tab.active{display:block}
+/* Calendar styles */
+.calendar-container{width:100%;max-width:1200px;margin:0 auto}
+.legend{margin-bottom:10px;font-size:13px;color:#555}
+.legend .drag-mode-option{margin-left:8px;font-size:12px}
+.calendar-header-row{display:none}
+.week-row{border:1px solid #ccc;border-radius:6px;background:#fff;margin-bottom:10px;padding:6px;break-inside:avoid-page;page-break-inside:avoid}
+.week-header{font-size:13px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;color:#555;gap:6px;flex-wrap:wrap}
+.week-actions{display:flex;align-items:center;gap:4px;font-size:11px}
+.week-actions select{font-size:11px;padding:2px}
+.days-row{display:grid;gap:6px}
+.day-cell{border:1px solid #ddd;border-radius:4px;padding:4px;background:#fafafa;display:flex;flex-direction:column;min-height:130px}
+.day-loc-time{display:flex;flex-direction:column;gap:2px;margin-bottom:3px;font-size:10px}
+.day-loc-time select,.day-loc-time input[type=time]{font-size:10px;padding:1px}
+.day-header{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;font-weight:700}
+.day-total{font-weight:400;font-size:11px;color:#666}
+.day-controls{display:flex;gap:2px;margin-bottom:4px}
+.day-controls select{flex:1;font-size:11px;padding:2px}
+.task-list{list-style:none;padding-left:0;margin:0;font-size:11px;flex:1;overflow-y:auto}
+.task-list li{margin-bottom:2px;display:flex;align-items:flex-start;gap:4px;padding:2px 3px;border-radius:3px;cursor:move}
+.task-list li.dragging{opacity:.5}
+.task-name{font-weight:700}
+.task-time-box{min-width:46px;padding:1px 4px;border-radius:3px;border:1px solid #ccc;background:#fff;font-size:10px;font-weight:600;text-align:center;flex-shrink:0}
+.task-remove-btn{border:none;background:#e74c3c;color:#fff;border-radius:3px;font-size:10px;padding:0 4px;cursor:pointer;margin-left:auto}
+.task-list li.done{opacity:.6}
+.task-list li.done .task-name{text-decoration:line-through}
+/* Task & Locations tab styles */
+.tasks-container,.locations-container{max-width:900px;margin:0 auto}
+.task-form,.location-form{background:#fff;border-radius:6px;border:1px solid #ccc;padding:10px;margin-bottom:15px}
+.task-form h2,.location-form h2{margin-top:0;font-size:16px}
+.form-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.form-row label{font-size:12px;display:block;margin-bottom:2px}
+.form-row input[type=text],.form-row input[type=number],.form-row textarea,.form-row select,.form-row input[type=color]{width:100%;padding:4px;font-size:12px}
+.task-form textarea{resize:vertical;min-height:40px}
+.task-form button,.location-form button{padding:6px 12px;font-size:12px;cursor:pointer}
+.tasks-list-card,.locations-list-card{background:#fff;border-radius:6px;border:1px solid #ccc;padding:10px;margin-bottom:15px}
+.tasks-list-card h2,.locations-list-card h2{margin-top:0;font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{border:1px solid #ddd;padding:4px;text-align:left;vertical-align:middle}
+th{background:#f0f0f0}
+.no-tasks,.no-locations{font-size:12px;color:#777;margin-top:6px}
+tr[data-task-index]{cursor:move}
+tr.dragging{opacity:.5}
+.location-block{border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:10px}
+.location-header{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.location-color-swatch{width:16px;height:16px;border-radius:4px;border:1px solid #ccc}
+.location-task-list{list-style:none;padding-left:0;margin:4px 0 0;font-size:12px}
+.location-task-list li.done span{text-decoration:line-through;opacity:.6}
+.location-task-list li{margin-bottom:2px}
+.task-inline-input{width:70px;font-size:11px;padding:2px}
+.task-inline-select{font-size:11px;padding:2px}
+@media (max-width:800px){
+  .days-row{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .week-header{flex-direction:column;align-items:flex-start;gap:2px}
+}
+/* Print styles: calendar only, full page */
+@media print{
+  body{margin:0;background:#fff}
+  header,.tab-buttons,#tasksTab,#locationsTab,#printBtn,#resetDoneBtn{display:none!important}
+  main{padding:0}
+  #calendarTab{display:block!important}
+  .calendar-container{max-width:100%;margin:0}
+  .week-row{page-break-inside:avoid}
+}
+
+.start-date-row{
+  margin: 6px 0 10px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.start-date-row input[type="date"]{
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+
+/* Tracked Tasks layout */
+.tracked-accordion{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.tracked-category{
+  background:#ffffff;
+  border:1px solid #ccc;
+  border-radius:10px;
+  overflow:hidden;
+}
+.tracked-category-toggle{
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  border:none;
+  cursor:pointer;
+  background:#f6f7fb;
+  font-size:13px;
+  font-weight:700;
+}
+.tracked-category-toggle.open{
+  background:#eaf7f3;
+}
+.tracked-category-body{
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.tracked-task-row{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap; /* allows wrapping only when needed */
+  padding:8px 10px;
+  border:1px solid #e6e6e6;
+  border-radius:10px;
+  background:#fff;
+}
+
+.tracked-task-name{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+.tracked-task-fields{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex-wrap:wrap; /* wrap when reaching right side */
+  flex: 1 1 420px;
+  min-width: 260px;
+}
+
+.tracked-field{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width: 140px;
+}
+
+.tracked-field-label{
+  font-size:11px;
+  color:#666;
+  font-weight:600;
+}
+
+.tracked-field input[type="text"],
+.tracked-field input[type="number"],
+.tracked-field input[type="date"]{
+  font-size:12px;
+  padding:4px 6px;
+}
+
+.tracked-field-checkbox{
+  flex-direction:row;
+  align-items:center;
+  gap:8px;
+  min-width: 140px;
+}
+.tracked-field-checkbox .tracked-field-label{
+  margin:0;
+}
+
+.tracked-task-actions{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  margin-left:auto;
+}
+
+
+/* Tracked Tasks nested (location) accordion */
+.tracked-subcategory{
+  border:1px solid #e8e8e8;
+  border-radius:10px;
+  overflow:hidden;
+  margin-top:8px;
+}
+.tracked-subcategory-toggle{
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  border:none;
+  cursor:pointer;
+  background:#fbfbfd;
+  font-size:12px;
+  font-weight:700;
+}
+.tracked-subcategory-toggle.open{
+  background:#f1f6ff;
+}
+.tracked-subcategory-body{
+  padding:10px 10px 8px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+
+/* Date quick-set button */
+.tracked-date-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.tracked-date-today{
+  width:26px;
+  height:26px;
+  border-radius:8px;
+  border:1px solid #d0d0d0;
+  background:#f2f2f2;
+  color:#7a7a7a;
+  font-weight:900;
+  cursor:pointer;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition: background 500ms ease, border-color 500ms ease, color 500ms ease, transform 150ms ease;
+}
+.tracked-date-today:hover{
+  transform: translateY(-1px);
+}
+.tracked-date-today.flash-green{
+  background:#d9f7d9;
+  border-color:#86d686;
+  color:#1e7a1e;
+}
+
+
+/* Tracked task menu (ellipsis) */
+.tracked-task-actions{
+  position: relative;
+  margin-left:auto;
+}
+.tracked-menu-btn{
+  width:32px;
+  height:28px;
+  border-radius:10px;
+  border:1px solid #d9d9d9;
+  background:#fff;
+  cursor:pointer;
+  font-size:18px;
+  line-height:1;
+}
+.tracked-menu{
+  position:absolute;
+  right:0;
+  top:32px;
+  z-index:100;
+  background:#fff;
+  border:1px solid #d9d9d9;
+  border-radius:10px;
+  padding:6px;
+  box-shadow:0 8px 22px rgba(0,0,0,0.12);
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:140px;
+}
+.tracked-menu button{
+  text-align:left;
+  border:none;
+  background:#f6f6f6;
+  padding:8px 10px;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+}
+.tracked-menu button:hover{
+  background:#eaeaea;
+}
+
+/* If menu would overflow bottom, open upward */
+.tracked-menu.open-up{
+  top:auto;
+  bottom:32px;
+}
+
+
+/* Portal menu: fixed to viewport so it won't be clipped by overflow containers */
+.tracked-menu-portal{
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+}
+
+
+/* Portal menu overrides to prevent full-width stretching */
+.tracked-menu-portal{
+  right: auto !important;
+  bottom: auto !important;
+  width: max-content;
+  max-width: 240px;
+}
+.tracked-menu-portal button{
+  width: 100%;
+}
