@@ -1,8 +1,8 @@
-import { state, saveState } from "./state.js";
-import { dayNames } from "./constants.js";
-import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js";
-import { populateTaskLocationOptions, renderTaskList } from "./tasks.js";
-import { renderLocationsTab } from "./locations.js";
+import { state, saveState } from "./state.js?v=20260114_03";
+import { dayNames } from "./constants.js?v=20260114_03";
+import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js?v=20260114_03";
+import { populateTaskLocationOptions, renderTaskList } from "./tasks.js?v=20260114_03";
+import { renderLocationsTab } from "./locations.js?v=20260114_03";
 
 export function renderCalendarHeader() {
   const headerRow = document.getElementById("calendarDayHeader");

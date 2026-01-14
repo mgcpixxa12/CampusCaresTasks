@@ -1,11 +1,11 @@
-import { loadState, setOnChange, state, saveState } from "./state.js";
-import { initTabs } from "./tabs.js";
-import { initLogin } from "./auth.js";
-import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js";
-import { renderLocationsTab, initLocationForm } from "./locations.js";
-import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js";
-import { renderUnfinishedTasks } from "./unfinished.js";
-import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js";
+import { loadState, setOnChange, state, saveState } from "./state.js?v=20260114_03";
+import { initTabs } from "./tabs.js?v=20260114_03";
+import { initLogin } from "./auth.js?v=20260114_03";
+import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js?v=20260114_03";
+import { renderLocationsTab, initLocationForm } from "./locations.js?v=20260114_03";
+import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js?v=20260114_03";
+import { renderUnfinishedTasks } from "./unfinished.js?v=20260114_03";
+import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js?v=20260114_03";
 
 function rerenderAll() {
   // Keep the small, cheap render order consistent
@@ -66,8 +66,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const clientId = document.querySelector('meta[name="google-signin-client_id"]')?.content || "";
   initLogin({ clientId, onLoaded: rerenderAll });
 
-  document.getElementById("printBtn")?.addEventListener("click", () => window.print());
-  document.getElementById("resetDoneBtn")?.addEventListener("click", resetAllDone);
+  document.getElementById("printBtn")?.addEventListener("click", () => {
+  // Ensure calendar + unfinished tasks are freshly rendered before printing
+  rerenderAll();
+  // Print after the DOM has had a moment to apply changes (Drive sync, latest edits)
+  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+});
+document.getElementById("resetDoneBtn")?.addEventListener("click", resetAllDone);
 
   // Drag mode radios
   document.querySelectorAll('input[name="dragMode"]').forEach(input => {

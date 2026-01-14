@@ -1,5 +1,5 @@
-import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, DRIVE_FILE_NAME, DRIVE_SCOPE } from "./constants.js";
-import { state, applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler } from "./state.js";
+import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, DRIVE_FILE_NAME, DRIVE_SCOPE } from "./constants.js?v=20260114_03";
+import { state, applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler } from "./state.js?v=20260114_03";
 
 export const loginState = { user: null, role: "guest" };
 
@@ -208,6 +208,17 @@ export async function loadFromDriveIfPossible(clientId, {onLoaded} = {}) {
       try { data = JSON.parse(text); } catch (e) { console.warn("Failed to parse planner-data.json:", e); return; }
 
       if (data && typeof data === "object") {
+        // Avoid overwriting newer local changes with an older Drive file.
+        const driveLM = typeof data.lastModified === "number" ? data.lastModified : 0;
+        const localLM = typeof state.lastModified === "number" ? state.lastModified : 0;
+
+        if (localLM && driveLM && localLM > driveLM) {
+          // Local is newer: keep it and push local up to Drive.
+          await createOrUpdateDriveFile(clientId);
+          if (typeof onLoaded === "function") onLoaded();
+          return;
+        }
+
         applyLoadedState(data);
         // Update local cache but do NOT auto-trigger Drive save
         saveStateLocalOnly();

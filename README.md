@@ -64,3 +64,7 @@ Tracked Tasks default to **All locations**, but you can select a specific locati
 
 ### Tracked Tasks: "All locations"
 When you create a tracked task with **All locations**, the app generates **one tracked-task instance per location** (so each school/classroom has its own checklist fields & values).
+
+
+## Cache-busting (GitHub Pages)
+This build uses a version query string (`?v=20260114_03`) on all JS module imports so browsers don’t keep running old cached code. If you deploy a new build, bump the BUILD string in `index.html` and the JS import URLs.

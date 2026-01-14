@@ -1,8 +1,8 @@
-import { state, saveState } from "./state.js";
-import { escapeHtml, formatFrequency, getLocationNameByValue } from "./utils.js";
-import { showTab } from "./tabs.js";
-import { renderCalendar } from "./calendar.js";
-import { renderLocationsTab } from "./locations.js";
+import { state, saveState } from "./state.js?v=20260114_03";
+import { escapeHtml, formatFrequency, getLocationNameByValue } from "./utils.js?v=20260114_03";
+import { showTab } from "./tabs.js?v=20260114_03";
+import { renderCalendar } from "./calendar.js?v=20260114_03";
+import { renderLocationsTab } from "./locations.js?v=20260114_03";
 
 export function populateTaskLocationOptions(selectedValue) {
   const select = document.getElementById("taskLocation");

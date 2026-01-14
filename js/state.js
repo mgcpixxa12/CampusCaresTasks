@@ -1,8 +1,9 @@
 import {
   STORAGE_KEY_TASKS, STORAGE_KEY_ASSIGNMENTS, STORAGE_KEY_LOCATIONS,
   STORAGE_KEY_DAYCELLSETTINGS, STORAGE_KEY_WEEK_VISIBILITY,
-  STORAGE_KEY_START_MONDAY, STORAGE_KEY_TRACKED_CATEGORIES, STORAGE_KEY_TRACKED_TASKS
-} from "./constants.js";
+  STORAGE_KEY_START_MONDAY, STORAGE_KEY_TRACKED_CATEGORIES, STORAGE_KEY_TRACKED_TASKS,
+  STORAGE_KEY_LAST_MODIFIED
+} from "./constants.js?v=20260114_03";
 
 export const state = {
   // Core data
@@ -14,6 +15,13 @@ export const state = {
 
   // Date basis (ISO yyyy-mm-dd) for Monday of Week 1
   startMondayISO: null,
+
+  // Last modification time (ms since epoch). Used to avoid Drive sync overwriting newer local changes.
+  lastModified: 0,
+
+  // Cross-device conflict resolution
+  // Updated whenever we persist state locally (ms since epoch)
+  lastModified: 0,
 
   // Tracked Tasks (custom form-like tasks)
   trackedCategories: [], // {id, name}
@@ -133,7 +141,10 @@ export function normalizeCurrentState() {
       id: typeof f?.id === "number" ? f.id : 0,
       label: String(f?.label || ""),
       type: String(f?.type || "text"),
-      value: f?.value ?? (String(f?.type) === "checkbox" ? false : "")
+      value: f?.value ?? (String(f?.type) === "checkbox" ? false : ""),
+      // Optional date-field behaviors
+      highlightEnabled: !!f?.highlightEnabled,
+      expiryDays: typeof f?.expiryDays === "number" ? f.expiryDays : (parseInt(f?.expiryDays || "", 10) || null)
     }));
   });
 
@@ -162,7 +173,7 @@ export function normalizeCurrentState() {
 }
 
 export function loadState() {
-  let storedTasks=null, storedAssignments=null, storedLocations=null, storedSettings=null, storedWeekVisibility=null, storedStartMonday=null, storedTrackedCategories=null, storedTrackedTasks=null;
+  let storedTasks=null, storedAssignments=null, storedLocations=null, storedSettings=null, storedWeekVisibility=null, storedStartMonday=null, storedTrackedCategories=null, storedTrackedTasks=null, storedLastModified=null;
   if (window.localStorage) {
     try {
       storedTasks = localStorage.getItem(STORAGE_KEY_TASKS);
@@ -171,6 +182,7 @@ export function loadState() {
       storedSettings = localStorage.getItem(STORAGE_KEY_DAYCELLSETTINGS);
       storedWeekVisibility = localStorage.getItem(STORAGE_KEY_WEEK_VISIBILITY);
       storedStartMonday = localStorage.getItem(STORAGE_KEY_START_MONDAY);
+      storedLastModified = localStorage.getItem(STORAGE_KEY_LAST_MODIFIED);
       storedTrackedCategories = localStorage.getItem(STORAGE_KEY_TRACKED_CATEGORIES);
       storedTrackedTasks = localStorage.getItem(STORAGE_KEY_TRACKED_TASKS);
     } catch (e) {
@@ -185,6 +197,7 @@ export function loadState() {
 
   // Start date + tracked tasks
   state.startMondayISO = storedStartMonday ? (JSON.parse(storedStartMonday) || null) : null;
+  state.lastModified = storedLastModified ? (JSON.parse(storedLastModified) || 0) : 0;
   state.trackedCategories = storedTrackedCategories ? (JSON.parse(storedTrackedCategories) || []) : [];
   state.trackedTasks = storedTrackedTasks ? (JSON.parse(storedTrackedTasks) || []) : [];
 
@@ -213,6 +226,7 @@ export function applyLoadedState(data) {
 
   // Cross-device sync: include Week-1 Monday date and Tracked Tasks
   state.startMondayISO = data.startMondayISO ? String(data.startMondayISO) : null;
+  state.lastModified = typeof data.lastModified === "number" ? data.lastModified : 0;
   state.trackedCategories = Array.isArray(data.trackedCategories) ? data.trackedCategories : [];
   state.trackedTasks = Array.isArray(data.trackedTasks) ? data.trackedTasks : [];
 
@@ -228,6 +242,7 @@ export function getSerializableState() {
     dayCellSettings: state.dayCellSettings,
     weekVisibility: state.weekVisibility,
     startMondayISO: state.startMondayISO,
+    lastModified: state.lastModified,
     trackedCategories: state.trackedCategories,
     trackedTasks: state.trackedTasks
   };
@@ -236,11 +251,14 @@ export function getSerializableState() {
 export function saveStateLocalOnly() {
   if (!window.localStorage) return;
   try {
+    // Update last-modified timestamp whenever we save.
+    state.lastModified = Date.now();
     localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(state.tasks));
     localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(state.assignments));
     localStorage.setItem(STORAGE_KEY_LOCATIONS, JSON.stringify(state.locations));
     localStorage.setItem(STORAGE_KEY_DAYCELLSETTINGS, JSON.stringify(state.dayCellSettings));
     localStorage.setItem(STORAGE_KEY_WEEK_VISIBILITY, JSON.stringify(state.weekVisibility));
+    localStorage.setItem(STORAGE_KEY_LAST_MODIFIED, JSON.stringify(state.lastModified));
     localStorage.setItem(STORAGE_KEY_START_MONDAY, JSON.stringify(state.startMondayISO));
     localStorage.setItem(STORAGE_KEY_TRACKED_CATEGORIES, JSON.stringify(state.trackedCategories));
     localStorage.setItem(STORAGE_KEY_TRACKED_TASKS, JSON.stringify(state.trackedTasks));

@@ -71,13 +71,33 @@ tr.dragging{opacity:.5}
 /* Print styles: calendar only, full page */
 @media print{
   body{margin:0;background:#fff}
-  header,.tab-buttons,#tasksTab,#locationsTab,#printBtn,#resetDoneBtn{display:none!important}
+  /* Hide navigation + controls */
+  header,.tab-buttons,#printBtn,#resetDoneBtn{display:none!important}
+
+  /* Show only the printable content */
+  #tasksTab,#locationsTab,#trackedTab{display:none!important}
+  #calendarTab,#unfinishedTab{display:block!important}
   main{padding:0}
-  #calendarTab{display:block!important}
+
+  /* Calendar: hide legend/filters and action buttons */
+  #calendarTab .legend{display:none!important}
+  #calendarTab .week-actions,
+  #calendarTab .day-actions,
+  #calendarTab button,
+  #calendarTab input,
+  #calendarTab select,
+  #calendarTab textarea,
+  #calendarTab .drag-mode-option,
+  #calendarTab .start-date-row,
+  #calendarTab .week-toggle{display:none!important}
+
   .calendar-container{max-width:100%;margin:0}
   .week-row{page-break-inside:avoid}
-}
 
+  /* Unfinished tasks should print on its own page */
+  #unfinishedTab{page-break-before:always}
+  #unfinishedTab .muted{display:none!important}
+}
 .start-date-row{
   margin: 6px 0 10px;
   display:flex;

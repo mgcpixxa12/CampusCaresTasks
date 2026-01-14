@@ -1,5 +1,5 @@
-import { state, saveState } from "./state.js";
-import { escapeHtml, getLocationNameByValue } from "./utils.js";
+import { state, saveState } from "./state.js?v=20260114_03";
+import { escapeHtml, getLocationNameByValue } from "./utils.js?v=20260114_03";
 
 // Local (in-memory) field builder for the create form
 let draftFields = [];
