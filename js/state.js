@@ -210,6 +210,12 @@ export function applyLoadedState(data) {
   } else {
     state.weekVisibility = [true,true,true,true];
   }
+
+  // Cross-device sync: include Week-1 Monday date and Tracked Tasks
+  state.startMondayISO = data.startMondayISO ? String(data.startMondayISO) : null;
+  state.trackedCategories = Array.isArray(data.trackedCategories) ? data.trackedCategories : [];
+  state.trackedTasks = Array.isArray(data.trackedTasks) ? data.trackedTasks : [];
+
   normalizeCurrentState();
 }
 

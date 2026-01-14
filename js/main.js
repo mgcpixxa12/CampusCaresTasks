@@ -15,6 +15,16 @@ function rerenderAll() {
   renderCalendarHeader();
   renderCalendar();
   renderUnfinishedTasks();
+  // Keep Week-1 Monday date input synced with state (important after Drive load)
+  const startDateInput = document.getElementById("startMondayDate");
+  const startHint = document.getElementById("startMondayHint");
+  if (startDateInput) {
+    const nextVal = state.startMondayISO || "";
+    if (startDateInput.value !== nextVal) startDateInput.value = nextVal;
+  }
+  if (startHint) {
+    startHint.textContent = state.startMondayISO ? "" : "(required for Unfinished Tasks)";
+  }
   refreshTrackedFormOptions();
   renderTrackedTasks();
 }

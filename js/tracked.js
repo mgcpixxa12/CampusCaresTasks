@@ -50,6 +50,48 @@ function ensureLocationSelect() {
   sel.value = "all";
 }
 
+function ensureBulkLocationSelect() {
+  const sel = document.getElementById("bulkTrackedLocation");
+  if (!sel) return;
+
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "All locations";
+  sel.appendChild(optAll);
+
+  state.locations.forEach(loc => {
+    const opt = document.createElement("option");
+    opt.value = String(loc.id);
+    opt.textContent = loc.name;
+    sel.appendChild(opt);
+  });
+}
+
+function ensureBulkCategorySelect() {
+  const sel = document.getElementById("bulkTrackedCategory");
+  if (!sel) return;
+
+  sel.innerHTML = "";
+  const optAny = document.createElement("option");
+  optAny.value = "";
+  optAny.textContent = "(Any category)";
+  sel.appendChild(optAny);
+
+  // Explicit Uncategorized option
+  const optUn = document.createElement("option");
+  optUn.value = "0";
+  optUn.textContent = "Uncategorized";
+  sel.appendChild(optUn);
+
+  state.trackedCategories.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = String(cat.id);
+    opt.textContent = cat.name;
+    sel.appendChild(opt);
+  });
+}
+
 function renderFieldPreview() {
   const wrapper = document.getElementById("trackedFieldsPreview");
   if (!wrapper) return;
@@ -174,7 +216,111 @@ export function initTrackedTasksUI() {
 
   ensureLocationSelect();
   ensureCategorySelect();
+  ensureBulkLocationSelect();
+  ensureBulkCategorySelect();
   renderFieldPreview();
+
+  // Bulk field controls: show/hide highlight settings for date type
+  const bulkTypeEl = document.getElementById("bulkFieldType");
+  const bulkHlWrap = document.getElementById("bulkFieldHighlight")?.parentElement;
+  const bulkExpWrap = document.getElementById("bulkFieldExpiryDays")?.parentElement;
+  const toggleBulkDateOptions = () => {
+    const isDate = (bulkTypeEl?.value || "") === "date";
+    if (bulkHlWrap) bulkHlWrap.style.display = isDate ? "flex" : "none";
+    if (bulkExpWrap) bulkExpWrap.style.display = isDate ? "flex" : "none";
+  };
+  bulkTypeEl?.addEventListener("change", toggleBulkDateOptions);
+  toggleBulkDateOptions();
+
+  document.getElementById("bulkAddFieldBtn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    const locSel = document.getElementById("bulkTrackedLocation");
+    const catSel = document.getElementById("bulkTrackedCategory");
+    const searchEl = document.getElementById("bulkTrackedSearch");
+
+    const labelEl = document.getElementById("bulkFieldLabel");
+    const typeEl = document.getElementById("bulkFieldType");
+    const hlEl = document.getElementById("bulkFieldHighlight");
+    const expEl = document.getElementById("bulkFieldExpiryDays");
+    const statusEl = document.getElementById("bulkAddFieldStatus");
+
+    const fieldLabel = (labelEl?.value || "").trim();
+    const fieldType = (typeEl?.value || "text").trim();
+    if (!fieldLabel) {
+      alert("Please enter a field label to add.");
+      return;
+    }
+
+    const rawLoc = (locSel?.value || "all").trim();
+    const locFilter = rawLoc === "all" ? "all" : parseInt(rawLoc, 10);
+    const rawCat = (catSel?.value || "").trim();
+    const catFilter = rawCat === "" ? null : parseInt(rawCat, 10);
+    const needle = (searchEl?.value || "").trim().toLowerCase();
+
+    const highlightEnabled = fieldType === "date" ? !!hlEl?.checked : false;
+    let expiryDays = 28;
+    if (fieldType === "date") {
+      expiryDays = parseInt(expEl?.value || "28", 10);
+      if (isNaN(expiryDays) || expiryDays <= 0) expiryDays = 28;
+    }
+
+    const labelKey = fieldLabel.toLowerCase();
+    const matches = (state.trackedTasks || []).filter(t => {
+      // location filter
+      if (locFilter !== "all") {
+        if (t.location !== locFilter) return false;
+      }
+      // category filter
+      if (catFilter !== null) {
+        const tCat = (t.categoryId || 0);
+        if (tCat !== catFilter) return false;
+      }
+      // title substring
+      if (needle) {
+        const ttl = String(t.title || "").toLowerCase();
+        if (!ttl.includes(needle)) return false;
+      }
+      return true;
+    });
+
+    if (matches.length === 0) {
+      if (statusEl) statusEl.textContent = "No tracked tasks matched your filters.";
+      return;
+    }
+
+    let tasksChanged = 0;
+    let fieldsAdded = 0;
+    matches.forEach(t => {
+      if (!Array.isArray(t.fields)) t.fields = [];
+      const already = t.fields.some(f => String(f?.label || "").trim().toLowerCase() === labelKey);
+      if (already) return; // don't duplicate
+
+      const newField = {
+        id: state.nextTrackedFieldId++,
+        label: fieldLabel,
+        type: fieldType,
+        value: (fieldType === "checkbox") ? false : ""
+      };
+      if (fieldType === "date") {
+        newField.highlightEnabled = highlightEnabled;
+        newField.expiryDays = expiryDays;
+      }
+
+      t.fields.push(newField);
+      tasksChanged += 1;
+      fieldsAdded += 1;
+    });
+
+    if (tasksChanged === 0) {
+      if (statusEl) statusEl.textContent = "All matching tasks already have a field with that label.";
+      return;
+    }
+
+    saveState();
+    if (statusEl) statusEl.textContent = `Added '${fieldLabel}' to ${tasksChanged} tracked task(s).`;
+    if (labelEl) labelEl.value = "";
+  });
 
   document.getElementById("addTrackedFieldBtn")?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -808,4 +954,6 @@ export function renderTrackedTasks() {
 export function refreshTrackedFormOptions() {
   ensureLocationSelect();
   ensureCategorySelect();
+  ensureBulkLocationSelect();
+  ensureBulkCategorySelect();
 }

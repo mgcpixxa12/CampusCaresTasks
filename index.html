@@ -222,6 +222,57 @@
           <button id="trackedTaskCancelBtn" type="button" class="hidden" style="margin-left:8px;">Cancel Edit</button>
         </div>
 
+        <div class="task-form" id="bulkTrackedCard">
+          <h2>Bulk Add Field</h2>
+          <p class="muted" style="margin-top:-6px;">Add the same field to many tracked tasks at once (ex: 14 tasks at each school) without editing one-by-one.</p>
+
+          <div class="form-row">
+            <div style="flex:1;">
+              <label for="bulkTrackedLocation">Location</label>
+              <select id="bulkTrackedLocation"></select>
+            </div>
+            <div style="flex:1;">
+              <label for="bulkTrackedCategory">Category</label>
+              <select id="bulkTrackedCategory"></select>
+            </div>
+            <div style="flex:2;">
+              <label for="bulkTrackedSearch">Title contains</label>
+              <input type="text" id="bulkTrackedSearch" placeholder="Optional filter (ex: 'Weekly' or 'Kitchen')" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="bulkFieldLabel">Field label</label>
+              <input type="text" id="bulkFieldLabel" placeholder="e.g. Completed By" />
+            </div>
+            <div style="flex:1;">
+              <label for="bulkFieldType">Type</label>
+              <select id="bulkFieldType">
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="checkbox">Checkbox</option>
+              </select>
+              <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                <input type="checkbox" id="bulkFieldHighlight" />
+                <span style="font-size:12px;">Highlight</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px;">Expire</span>
+                <input type="number" id="bulkFieldExpiryDays" value="28" min="1" style="width:70px; font-size:12px; padding:4px;" />
+                <span style="font-size:12px;">days</span>
+              </label>
+            </div>
+            <div style="flex:0;">
+              <label>&nbsp;</label>
+              <button id="bulkAddFieldBtn" type="button">Add Field to Matching Tasks</button>
+            </div>
+          </div>
+
+          <div id="bulkAddFieldStatus" class="muted" style="margin-top:6px;"></div>
+        </div>
+
         <div class="tasks-list-card">
           <h2>Tracked Tasks</h2>
           <div id="trackedTasksWrapper"></div>
