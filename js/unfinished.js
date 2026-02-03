@@ -25,6 +25,8 @@ function getUnfinishedEntries() {
 
         const task = state.tasks.find(t => t.id === entry.taskId);
         if (!task) return;
+        // Unfinished list should ignore Daily tasks
+        if ((task.frequency || "daily") === "daily") return;
 
         out.push({
           weekIndex: w,
