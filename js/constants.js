@@ -22,14 +22,14 @@ export const STORAGE_KEY_LAST_MODIFIED = "planner_lastModified_v1";
 
 
 // App version (shown top-left)
-export const APP_VERSION = "v2026.02.03-fb-email1";
+export const APP_VERSION = "v2026.02.03-fb-email2";
 
 // Firebase config (fill these in from Firebase console: Project settings -> Your apps)
 export const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyDy-iIrUhzIBSjRG9FWeDRVCmeV8FsWkmw",
+  authDomain: "work-tool-72a03.firebaseapp.com",
+  projectId: "work-tool-72a03",
+  storageBucket: "work-tool-72a03.firebasestorage.app",
+  messagingSenderId: "909804613977",
+  appId: "1:909804613977:web:5c0c35f36d475f2a7f1c48"
 };
