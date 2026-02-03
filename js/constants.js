@@ -19,3 +19,17 @@ export const STORAGE_KEY_TRACKED_CATEGORIES = "planner_trackedCategories_v1";
 export const STORAGE_KEY_TRACKED_TASKS = "planner_trackedTasks_v1";
 // Tracks last modification time of the planner state (ms since epoch)
 export const STORAGE_KEY_LAST_MODIFIED = "planner_lastModified_v1";
+
+
+// App version (shown top-left)
+export const APP_VERSION = "v2026.02.03-fb-email1";
+
+// Firebase config (fill these in from Firebase console: Project settings -> Your apps)
+export const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};

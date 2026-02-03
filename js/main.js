@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Login (Drive sync). After Drive load, re-render.
   const clientId = document.querySelector('meta[name="google-signin-client_id"]')?.content || "";
-  initLogin({ clientId, onLoaded: rerenderAll });
+  initLogin({ onLoaded: rerenderAll });
 
   document.getElementById("printBtn")?.addEventListener("click", () => {
   // Ensure calendar + unfinished tasks are freshly rendered before printing

@@ -1,290 +1,262 @@
-import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, DRIVE_FILE_NAME, DRIVE_SCOPE } from "./constants.js?v=20260114_03";
-import { state, applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler } from "./state.js?v=20260114_03";
+import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260114_03";
+import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260114_03";
+import { auth, db, firebaseReady } from "./firebase.js?v=20260114_03";
+
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+import {
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 export const loginState = { user: null, role: "guest" };
 
-const loginEls = { signin: null, signOutBtn: null, sessionText: null, driveReconnectBtn: null };
+const els = { signin: null, signOutBtn: null, sessionText: null };
 
-const driveState = {
-  tokenClient: null,
-  accessToken: null,
-  accessTokenExpiresAt: 0,
-  needsReconnect: false,
-  fileId: null,
-  firstLoadAttempted: false,
-  lastSaveTimeout: null
-};
+let saveTimer = null;
 
-
-function setDriveReconnectVisible(visible) {
-  if (!loginEls.driveReconnectBtn) return;
-  if (visible) loginEls.driveReconnectBtn.classList.remove("hidden");
-  else loginEls.driveReconnectBtn.classList.add("hidden");
-}
-
-function decodeJwt(token) {
-  try {
-    const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(base64);
-    return JSON.parse(decodeURIComponent(Array.prototype.map.call(
-      json, c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
-    ).join("")));
-  } catch {
-    return null;
-  }
+function setVersionLabel() {
+  const v = document.getElementById("versionLabel");
+  if (!v) return;
+  v.textContent = APP_VERSION || "";
 }
 
 function updateLoginUI() {
-  if (!loginEls.sessionText || !loginEls.signOutBtn) return;
-  if (loginState.user) {
-    const u = loginState.user;
-    loginEls.sessionText.textContent = `Signed in as ${u.name || u.email}`;
-    loginEls.signOutBtn.classList.remove("hidden");
-    // Drive reconnect button visibility depends on whether we can silently save.
-    setDriveReconnectVisible(!!driveState.needsReconnect);
-    if (loginEls.signin) loginEls.signin.innerHTML = "";
-  } else {
-    loginEls.sessionText.textContent = "Not signed in";
-    loginEls.signOutBtn.classList.add("hidden");
-    setDriveReconnectVisible(false);
-    driveState.needsReconnect = false;
-  }
-}
+  if (!els.sessionText || !els.signOutBtn) return;
 
-function renderSignInButton(clientId) {
-  if (!loginEls.signin) return;
-  if (loginState.user) { loginEls.signin.innerHTML = ""; return; }
-
-  loginEls.signin.innerHTML = "";
-
-  if (!(window.google && google.accounts && google.accounts.id)) {
-    const span = document.createElement("span");
-    span.className = "muted";
-    span.textContent = "Loading sign-in…";
-    loginEls.signin.appendChild(span);
-    setTimeout(() => renderSignInButton(clientId), 500);
+  if (!firebaseReady) {
+    els.sessionText.textContent = "Firebase not configured";
+    els.signOutBtn.classList.add("hidden");
+    if (els.signin) {
+      els.signin.innerHTML = "";
+      const b = document.createElement("button");
+      b.className = "btn secondary";
+      b.textContent = "Configure Firebase";
+      b.onclick = () => alert("Fill FIREBASE_CONFIG in js/constants.js (apiKey, authDomain, projectId, appId, etc). Then redeploy.");
+      els.signin.appendChild(b);
+    }
     return;
   }
 
-  google.accounts.id.initialize({
-    client_id: clientId,
-    callback: (resp) => {
-      const p = decodeJwt(resp.credential);
-      if (!p) return;
-      const email = String(p.email || "").toLowerCase();
-      loginState.user = { email, name: p.name || "" };
-      loginState.role = ADMIN_EMAILS.has(email) ? "admin" : "user";
-      try { localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(loginState)); } catch {}
-      updateLoginUI();
-      loginEls.signin.innerHTML = "";
-      loadFromDriveIfPossible(clientId);
-    },
-    auto_select: false,
-    ux_mode: "popup"
-  });
-
-  const btnContainer = document.createElement("div");
-  loginEls.signin.appendChild(btnContainer);
-  google.accounts.id.renderButton(btnContainer, { theme: "filled_blue", size: "medium" });
-}
-
-function ensureDriveTokenAsync(clientId, { interactive = false } = {}) {
-  return new Promise((resolve, reject) => {
-    if (!loginState.user) return reject(new Error("Not signed in; Drive sync disabled."));
-    if (!(window.google && google.accounts && google.accounts.oauth2)) return reject(new Error("Google OAuth2 library not ready"));
-
-    // If we already have a token and it isn't expired, use it.
-    if (driveState.accessToken && Date.now() < (driveState.accessTokenExpiresAt || 0)) {
-      return resolve(driveState.accessToken);
-    }
-
-    // If we can't interact (no user gesture), do NOT trigger a Google prompt.
-    // Instead, mark that we need the user to click "Reconnect Drive".
-    if (!interactive) {
-      driveState.needsReconnect = true;
-      updateLoginUI();
-      return reject(new Error("DRIVE_NEEDS_USER_GESTURE"));
-    }
-
-    if (!driveState.tokenClient) {
-      driveState.tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: DRIVE_SCOPE,
-        callback: () => {}
-      });
-    }
-
-    driveState.tokenClient.callback = (tokenResponse) => {
-      if (tokenResponse.error) {
-        driveState.needsReconnect = true;
-        updateLoginUI();
-        reject(tokenResponse);
-      } else {
-        driveState.accessToken = tokenResponse.access_token;
-        const expiresIn = Number(tokenResponse.expires_in || 0);
-        // Subtract a little buffer so we don't attempt to use it at the exact expiry.
-        driveState.accessTokenExpiresAt = Date.now() + Math.max(0, expiresIn - 60) * 1000;
-        driveState.needsReconnect = false;
-        updateLoginUI();
-        resolve(driveState.accessToken);
-      }
-    };
-
-    // First time: may show an account/consent UI. After that, it should be silent.
-    driveState.tokenClient.requestAccessToken({ prompt: "" });
-  });
-}
-
-async function createOrUpdateDriveFile(clientId) {
-  if (!loginState.user) return;
-  try {
-    const token = await ensureDriveTokenAsync(clientId, { interactive: false });
-    const payload = JSON.stringify(getSerializableState());
-
-    if (!driveState.fileId) {
-      const metaRes = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json" })
-      });
-      const meta = await metaRes.json();
-      if (meta && meta.id) driveState.fileId = meta.id;
-    }
-
-    if (driveState.fileId) {
-      await fetch("https://www.googleapis.com/upload/drive/v3/files/" + encodeURIComponent(driveState.fileId) + "?uploadType=media", {
-        method: "PATCH",
-        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-        body: payload
-      });
-    }
-  } catch (e) {
-    console.warn("Drive save failed:", e);
+  if (loginState.user) {
+    const u = loginState.user;
+    els.sessionText.textContent = `Signed in as ${u.name || u.email}`;
+    els.signOutBtn.classList.remove("hidden");
+    if (els.signin) els.signin.innerHTML = "";
+  } else {
+    els.sessionText.textContent = "Not signed in";
+    els.signOutBtn.classList.add("hidden");
+    renderSignInButton();
   }
 }
 
-function scheduleSaveToDriveFactory(clientId) {
-  return function scheduleSaveToDrive() {
-    if (!loginState.user) return;
-    if (driveState.lastSaveTimeout) clearTimeout(driveState.lastSaveTimeout);
-    driveState.lastSaveTimeout = setTimeout(() => {
-      driveState.lastSaveTimeout = null;
-      createOrUpdateDriveFile(clientId);
-    }, 2000);
+function renderSignInButton() {
+  if (!els.signin) return;
+  if (loginState.user) { els.signin.innerHTML = ""; return; }
+
+  // Email/password auth UI
+  els.signin.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "auth-box";
+
+  const email = document.createElement("input");
+  email.type = "email";
+  email.placeholder = "Email";
+  email.autocomplete = "email";
+  email.className = "auth-input";
+
+  const pass = document.createElement("input");
+  pass.type = "password";
+  pass.placeholder = "Password";
+  pass.autocomplete = "current-password";
+  pass.className = "auth-input";
+
+  const row = document.createElement("div");
+  row.className = "auth-row";
+
+  const btnIn = document.createElement("button");
+  btnIn.className = "btn primary";
+  btnIn.textContent = "Sign in";
+
+  const btnUp = document.createElement("button");
+  btnUp.className = "btn secondary";
+  btnUp.textContent = "Create account";
+
+  const link = document.createElement("button");
+  link.type = "button";
+  link.className = "link-btn";
+  link.textContent = "Forgot password?";
+
+  const getCreds = () => ({
+    email: String(email.value || "").trim(),
+    pass: String(pass.value || "")
+  });
+
+  const ensure = () => {
+    const c = getCreds();
+    if (!c.email || !c.pass) {
+      alert("Enter email and password.");
+      return null;
+    }
+    return c;
   };
+
+  btnIn.addEventListener("click", async () => {
+    const c = ensure(); if (!c) return;
+    try {
+      await signInWithEmailAndPassword(auth, c.email, c.pass);
+    } catch (e) {
+      console.error("Email sign-in failed:", e);
+      const msg = (e && (e.code || e.message)) ? String(e.code || e.message) : "Sign-in failed";
+      alert("Sign-in failed: " + msg);
+    }
+  });
+
+  btnUp.addEventListener("click", async () => {
+    const c = ensure(); if (!c) return;
+    try {
+      await createUserWithEmailAndPassword(auth, c.email, c.pass);
+    } catch (e) {
+      console.error("Create account failed:", e);
+      const msg = (e && (e.code || e.message)) ? String(e.code || e.message) : "Create account failed";
+      alert("Create account failed: " + msg);
+    }
+  });
+
+  link.addEventListener("click", async () => {
+    const em = String(email.value || "").trim();
+    if (!em) { alert("Enter your email first, then click Forgot password."); return; }
+    try {
+      await sendPasswordResetEmail(auth, em);
+      alert("Password reset email sent (check inbox/spam).");
+    } catch (e) {
+      console.error("Password reset failed:", e);
+      const msg = (e && (e.code || e.message)) ? String(e.code || e.message) : "Password reset failed";
+      alert("Password reset failed: " + msg);
+    }
+  });
+
+  // Enter key = sign in
+  pass.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") btnIn.click();
+  });
+
+  row.appendChild(btnIn);
+  row.appendChild(btnUp);
+
+  wrap.appendChild(email);
+  wrap.appendChild(pass);
+  wrap.appendChild(row);
+  wrap.appendChild(link);
+
+  els.signin.appendChild(wrap);
 }
 
-export async function loadFromDriveIfPossible(clientId, {onLoaded} = {}) {
-  if (!loginState.user) return;
-  driveState.firstLoadAttempted = true;
 
+function scheduleFirestoreSave() {
+  if (!loginState.user || !firebaseReady) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const uid = loginState.user.uid;
+      const data = getSerializableState();
+      await setDoc(doc(db, "plannerStates", uid), {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.warn("Firestore save failed:", e);
+    }
+  }, 600);
+}
+
+async function loadFromFirestoreIfPossible() {
+  if (!loginState.user || !firebaseReady) return false;
   try {
-    const token = await ensureDriveTokenAsync(clientId, { interactive: false });
+    const uid = loginState.user.uid;
+    const ref = doc(db, "plannerStates", uid);
+    const snap = await getDoc(ref);
 
-    const q = `name = '${DRIVE_FILE_NAME}' and trashed = false`;
-    const listRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`,
-      { headers: { "Authorization": "Bearer " + token } }
-    );
-
-    const listText = await listRes.text();
-    let listJson;
-    try { listJson = JSON.parse(listText); } catch (e) { console.warn("Failed to parse Drive list response:", e); return; }
-
-    if (listJson.files && listJson.files.length > 0) {
-      const file = listJson.files[0];
-      driveState.fileId = file.id;
-
-      const contentRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-        { headers: { "Authorization": "Bearer " + token } }
-      );
-
-      const text = await contentRes.text();
-      if (!contentRes.ok) { console.warn("Drive content fetch not OK:", text); return; }
-
-      let data;
-      try { data = JSON.parse(text); } catch (e) { console.warn("Failed to parse planner-data.json:", e); return; }
-
-      if (data && typeof data === "object") {
-        // Avoid overwriting newer local changes with an older Drive file.
-        const driveLM = typeof data.lastModified === "number" ? data.lastModified : 0;
-        const localLM = typeof state.lastModified === "number" ? state.lastModified : 0;
-
-        if (localLM && driveLM && localLM > driveLM) {
-          // Local is newer: keep it and push local up to Drive.
-          await createOrUpdateDriveFile(clientId);
-          if (typeof onLoaded === "function") onLoaded();
-          return;
-        }
-
-        applyLoadedState(data);
-        // Update local cache but do NOT auto-trigger Drive save
-        saveStateLocalOnly();
-        if (typeof onLoaded === "function") onLoaded();
-        return;
-      }
+    if (!snap.exists()) {
+      // First login: push current local state up as the initial state.
+      await setDoc(ref, { ...getSerializableState(), updatedAt: serverTimestamp() });
+      return false;
     }
 
-    // If no file found, create one from current local state
-    await createOrUpdateDriveFile(clientId);
+    const remote = snap.data() || {};
+    const remoteLast = typeof remote.lastModified === "number" ? remote.lastModified : 0;
+    const localLast = typeof state.lastModified === "number" ? state.lastModified : 0;
+
+    // If remote is newer, adopt it. Otherwise keep local and push local up.
+    if (remoteLast > localLast) {
+      applyLoadedState(remote);
+      saveStateLocalOnly();
+      return true;
+    } else if (localLast > remoteLast) {
+      await setDoc(ref, { ...getSerializableState(), updatedAt: serverTimestamp() });
+      return false;
+    }
   } catch (e) {
-    console.warn("Drive load failed:", e);
+    console.warn("Firestore load failed:", e);
   }
+  return false;
 }
 
-export function initLogin({ clientId, onLoaded } = {}) {
-  loginEls.signin = document.getElementById("signin");
-  loginEls.signOutBtn = document.getElementById("signOutBtn");
-  loginEls.sessionText = document.getElementById("sessionText");
-  loginEls.driveReconnectBtn = document.getElementById("driveReconnectBtn");
+export function initLogin({ onLoaded } = {}) {
+  els.signin = document.getElementById("signin");
+  els.signOutBtn = document.getElementById("signOutBtn");
+  els.sessionText = document.getElementById("sessionText");
 
-  // Restore previous login (if any)
+  setVersionLabel();
+
+  els.signOutBtn?.addEventListener("click", async () => {
+    try { await signOut(auth); } catch (e) { console.warn(e); }
+  });
+
+  // Keep the existing plumbing: saveState() will call this scheduler.
+  setDriveSaveScheduler(scheduleFirestoreSave);
+
+  // Restore cached login info (purely for UI while Firebase initializes)
   try {
     const raw = localStorage.getItem(LOGIN_STORAGE_KEY);
     if (raw) {
-      const saved = JSON.parse(raw);
-      if (saved && saved.user) { loginState.user = saved.user; loginState.role = saved.role || "user"; }
+      const cached = JSON.parse(raw);
+      if (cached?.user?.email) {
+        loginState.user = cached.user;
+        loginState.role = cached.role || "user";
+      }
     }
   } catch {}
 
-  if (loginEls.signOutBtn) {
-    loginEls.signOutBtn.addEventListener("click", () => {
+  updateLoginUI();
+
+  if (!firebaseReady) return;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      const email = String(user.email || "").toLowerCase();
+      loginState.user = { uid: user.uid, email, name: user.displayName || "" };
+      loginState.role = ADMIN_EMAILS.has(email) ? "admin" : "user";
+      try { localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(loginState)); } catch {}
+      updateLoginUI();
+
+      const loaded = await loadFromFirestoreIfPossible();
+      if (loaded && typeof onLoaded === "function") onLoaded();
+    } else {
       loginState.user = null;
       loginState.role = "guest";
-      driveState.accessToken = null;
-      driveState.accessTokenExpiresAt = 0;
-      driveState.needsReconnect = false;
-      driveState.fileId = null;
       try { localStorage.removeItem(LOGIN_STORAGE_KEY); } catch {}
       updateLoginUI();
-      renderSignInButton(clientId);
-    });
-  if (loginEls.driveReconnectBtn) {
-    loginEls.driveReconnectBtn.addEventListener("click", async () => {
-      try {
-        await ensureDriveTokenAsync(clientId, { interactive: true });
-        // After reconnect, do an immediate save so Drive catches up.
-        await createOrUpdateDriveFile(clientId);
-      } catch (e) {
-        console.warn("Drive reconnect failed:", e);
-      }
-    });
-  }
-
-  }
-
-  updateLoginUI();
-  renderSignInButton(clientId);
-
-  // Register Drive-save hook for state.saveState()
-  setDriveSaveScheduler(scheduleSaveToDriveFactory(clientId));
-
-  // If already logged in from previous session, try Drive sync
-  if (loginState.user) {
-    ensureDriveTokenAsync(clientId, { interactive: true })
-            .then(() => loadFromDriveIfPossible(clientId, { onLoaded }))
-            .catch(() => loadFromDriveIfPossible(clientId, { onLoaded }));
-  }
+      if (typeof onLoaded === "function") onLoaded();
+    }
+  });
 }

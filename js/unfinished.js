@@ -7,9 +7,6 @@ import { showTab } from "./tabs.js?v=20260114_03";
 function getUnfinishedEntries() {
   if (!state.startMondayISO) return [];
 
-  // Defensive: unfinished rendering can run before tasks are loaded.
-  const tasksArr = Array.isArray(state.tasks) ? state.tasks : [];
-
   const today = new Date();
   const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -26,10 +23,8 @@ function getUnfinishedEntries() {
         if (entry?.type !== "task") return;
         if (entry.done) return;
 
-        const task = tasksArr.find(t => t.id === entry.taskId);
+        const task = state.tasks.find(t => t.id === entry.taskId);
         if (!task) return;
-        // Unfinished list should ignore Daily tasks
-        if ((task.frequency || "daily") === "daily") return;
 
         out.push({
           weekIndex: w,
