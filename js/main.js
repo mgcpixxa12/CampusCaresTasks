@@ -1,11 +1,11 @@
-import { loadState, setOnChange, state, saveState, setStorageNamespace, resetStateToEmpty } from "./state.js?v=20260224_04";
-import { initTabs } from "./tabs.js?v=20260224_04";
-import { initLogin } from "./auth.js?v=20260224_04";
-import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js?v=20260224_04";
-import { renderLocationsTab, initLocationForm } from "./locations.js?v=20260224_04";
-import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js?v=20260224_04";
-import { renderUnfinishedTasks } from "./unfinished.js?v=20260224_04";
-import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js?v=20260224_04";
+import { loadState, setOnChange, state, saveState, setStorageNamespace, resetStateToEmpty } from "./state.js?v=20260224_06";
+import { initTabs } from "./tabs.js?v=20260224_06";
+import { initLogin } from "./auth.js?v=20260224_06";
+import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js?v=20260224_06";
+import { renderLocationsTab, initLocationForm } from "./locations.js?v=20260224_06";
+import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js?v=20260224_06";
+import { renderUnfinishedTasks } from "./unfinished.js?v=20260224_06";
+import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js?v=20260224_06";
 
 function rerenderAll() {
   // Keep the small, cheap render order consistent

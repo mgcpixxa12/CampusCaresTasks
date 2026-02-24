@@ -1,4 +1,4 @@
-import { FIREBASE_CONFIG } from "./constants.js?v=20260224_04";
+import { FIREBASE_CONFIG } from "./constants.js?v=20260224_06";
 
 // Firebase modular SDK (CDN ESM)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";

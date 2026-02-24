@@ -1,8 +1,8 @@
-import { state, saveState } from "./state.js?v=20260224_05";
-import { dayNames } from "./constants.js?v=20260224_05";
-import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js?v=20260224_05";
-import { populateTaskLocationOptions, renderTaskList } from "./tasks.js?v=20260224_05";
-import { renderLocationsTab } from "./locations.js?v=20260224_05";
+import { state, saveState } from "./state.js?v=20260224_06";
+import { dayNames } from "./constants.js?v=20260224_06";
+import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js?v=20260224_06";
+import { populateTaskLocationOptions, renderTaskList } from "./tasks.js?v=20260224_06";
+import { renderLocationsTab } from "./locations.js?v=20260224_06";
 
 export function renderCalendarHeader() {
   const headerRow = document.getElementById("calendarDayHeader");
@@ -26,9 +26,20 @@ function computeVisibleDayIndexes() {
 }
 
 function getCurrentLocationForDay(weekIndex, dayIndex) {
-  const settings = state.dayCellSettings[weekIndex][dayIndex] || { startLocationId:null, startTime:null };
+  // Defensive shape normalization (older saved states may be missing these arrays)
+  if (!Array.isArray(state.dayCellSettings)) state.dayCellSettings = [];
+  if (!Array.isArray(state.dayCellSettings[weekIndex])) state.dayCellSettings[weekIndex] = [];
+  if (!state.dayCellSettings[weekIndex][dayIndex]) {
+    state.dayCellSettings[weekIndex][dayIndex] = { startLocationId: null, startTime: null };
+  }
+  const settings = state.dayCellSettings[weekIndex][dayIndex];
+
+  if (!Array.isArray(state.assignments)) state.assignments = [];
+  if (!Array.isArray(state.assignments[weekIndex])) state.assignments[weekIndex] = [];
+  if (!Array.isArray(state.assignments[weekIndex][dayIndex])) state.assignments[weekIndex][dayIndex] = [];
+  const dayEntries = state.assignments[weekIndex][dayIndex];
+
   let currentLocId = settings.startLocationId || null;
-  const dayEntries = state.assignments[weekIndex][dayIndex] || [];
   dayEntries.forEach(entry => {
     if (entry.type === "travel") currentLocId = entry.locationId || null;
   });
