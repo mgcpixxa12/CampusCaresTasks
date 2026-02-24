@@ -1,7 +1,7 @@
-import { state, saveState } from "./state.js?v=20260114_03";
-import { escapeHtml, getPlannerDateISO, getPlannerDateLabel } from "./utils.js?v=20260114_03";
-import { dayNames } from "./constants.js?v=20260114_03";
-import { showTab } from "./tabs.js?v=20260114_03";
+import { state, saveState } from "./state.js?v=20260224_01";
+import { escapeHtml, getPlannerDateISO, getPlannerDateLabel } from "./utils.js?v=20260224_01";
+import { dayNames } from "./constants.js?v=20260224_01";
+import { showTab } from "./tabs.js?v=20260224_01";
 
 // Compute unfinished task entries for past dates (relative to user's local time)
 function getUnfinishedEntries() {

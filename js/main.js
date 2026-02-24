@@ -1,11 +1,11 @@
-import { loadState, setOnChange, state, saveState } from "./state.js?v=20260114_03";
-import { initTabs } from "./tabs.js?v=20260114_03";
-import { initLogin } from "./auth.js?v=20260114_03";
-import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js?v=20260114_03";
-import { renderLocationsTab, initLocationForm } from "./locations.js?v=20260114_03";
-import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js?v=20260114_03";
-import { renderUnfinishedTasks } from "./unfinished.js?v=20260114_03";
-import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js?v=20260114_03";
+import { loadState, setOnChange, state, saveState, setStorageNamespace, resetStateToEmpty } from "./state.js?v=20260224_01";
+import { initTabs } from "./tabs.js?v=20260224_01";
+import { initLogin } from "./auth.js?v=20260224_01";
+import { populateTaskLocationOptions, renderTaskList, initTaskForm } from "./tasks.js?v=20260224_01";
+import { renderLocationsTab, initLocationForm } from "./locations.js?v=20260224_01";
+import { renderCalendarHeader, renderCalendar, resetAllDone } from "./calendar.js?v=20260224_01";
+import { renderUnfinishedTasks } from "./unfinished.js?v=20260224_01";
+import { initTrackedTasksUI, renderTrackedTasks, refreshTrackedFormOptions } from "./tracked.js?v=20260224_01";
 
 function rerenderAll() {
   // Keep the small, cheap render order consistent
@@ -29,8 +29,24 @@ function rerenderAll() {
   renderTrackedTasks();
 }
 
+
+function setAppHidden(hidden) {
+  const tabs = document.querySelector(".tab-buttons");
+  const main = document.querySelector("main");
+  if (tabs) tabs.classList.toggle("hidden", hidden);
+  if (main) main.classList.toggle("hidden", hidden);
+  const headerBtns = document.getElementById("printBtn");
+  const resetBtn = document.getElementById("resetDoneBtn");
+  if (headerBtns) headerBtns.classList.toggle("hidden", hidden);
+  if (resetBtn) resetBtn.classList.toggle("hidden", hidden);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  loadState();
+  // Hide everything until a user signs in
+  setStorageNamespace(null);
+  resetStateToEmpty();
+  setAppHidden(true);
+
   initTabs();
   initTaskForm();
   initLocationForm();
@@ -64,6 +80,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Login (Drive sync). After Drive load, re-render.
   const clientId = document.querySelector('meta[name="google-signin-client_id"]')?.content || "";
+
+  // React to auth changes (enforces per-user state + hides tool when signed out)
+  window.addEventListener("cc-auth-changed", (ev) => {
+    const detail = ev?.detail || {};
+    const user = detail.user || null;
+
+    if (user && user.uid) {
+      // Namespace localStorage per-user, and migrate legacy keys once for this UID
+      setStorageNamespace(user.uid, { allowLegacyMigration: true });
+      loadState();
+      rerenderAll();
+      setAppHidden(false);
+    } else {
+      // Signed out: clear in-memory state and hide UI (prevents others on this device from seeing prior data)
+      setStorageNamespace(null);
+      resetStateToEmpty();
+      rerenderAll();
+      setAppHidden(true);
+    }
+  });
+
   initLogin({ onLoaded: rerenderAll });
 
   document.getElementById("printBtn")?.addEventListener("click", () => {

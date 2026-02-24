@@ -1,6 +1,6 @@
-import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260114_03";
-import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260114_03";
-import { auth, db, firebaseReady } from "./firebase.js?v=20260114_03";
+import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260224_01";
+import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260224_01";
+import { auth, db, firebaseReady } from "./firebase.js?v=20260224_01";
 
 import {
   onAuthStateChanged,
@@ -23,6 +23,25 @@ const els = { signin: null, signOutBtn: null, sessionText: null };
 
 let saveTimer = null;
 
+
+function encodeStateForFirestore(obj) {
+  // Firestore does not support nested arrays. We store the state as a JSON string payload.
+  // This is reliable and keeps schema stable across future UI changes.
+  return {
+    payload: JSON.stringify(obj ?? {}),
+    lastModified: typeof obj?.lastModified === "number" ? obj.lastModified : Date.now()
+  };
+}
+
+function decodeStateFromFirestore(docData) {
+  if (!docData) return null;
+  // New format
+  if (typeof docData.payload === "string") {
+    try { return JSON.parse(docData.payload); } catch { return null; }
+  }
+  // Legacy format (pre-payload)
+  return docData;
+}
 function setVersionLabel() {
   const v = document.getElementById("versionLabel");
   if (!v) return;
@@ -169,11 +188,12 @@ function scheduleFirestoreSave() {
     try {
       const uid = loginState.user.uid;
       const data = getSerializableState();
+      const encoded = encodeStateForFirestore(data);
       await setDoc(doc(db, "plannerStates", uid), {
-        ...data,
+        ...encoded,
         updatedAt: serverTimestamp()
       });
-    } catch (e) {
+} catch (e) {
       console.warn("Firestore save failed:", e);
     }
   }, 600);
@@ -188,11 +208,12 @@ async function loadFromFirestoreIfPossible() {
 
     if (!snap.exists()) {
       // First login: push current local state up as the initial state.
-      await setDoc(ref, { ...getSerializableState(), updatedAt: serverTimestamp() });
+      await setDoc(ref, { ...encodeStateForFirestore(getSerializableState()), updatedAt: serverTimestamp() });
       return false;
     }
 
-    const remote = snap.data() || {};
+    const rawRemote = snap.data() || {};
+    const remote = decodeStateFromFirestore(rawRemote) || {};
     const remoteLast = typeof remote.lastModified === "number" ? remote.lastModified : 0;
     const localLast = typeof state.lastModified === "number" ? state.lastModified : 0;
 
@@ -202,7 +223,7 @@ async function loadFromFirestoreIfPossible() {
       saveStateLocalOnly();
       return true;
     } else if (localLast > remoteLast) {
-      await setDoc(ref, { ...getSerializableState(), updatedAt: serverTimestamp() });
+      await setDoc(ref, { ...encodeStateForFirestore(getSerializableState()), updatedAt: serverTimestamp() });
       return false;
     }
   } catch (e) {
@@ -249,6 +270,8 @@ export function initLogin({ onLoaded } = {}) {
       try { localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(loginState)); } catch {}
       updateLoginUI();
 
+      try { window.dispatchEvent(new CustomEvent("cc-auth-changed", { detail: { user: loginState.user, role: loginState.role } })); } catch {}
+
       const loaded = await loadFromFirestoreIfPossible();
       if (loaded && typeof onLoaded === "function") onLoaded();
     } else {
@@ -256,6 +279,7 @@ export function initLogin({ onLoaded } = {}) {
       loginState.role = "guest";
       try { localStorage.removeItem(LOGIN_STORAGE_KEY); } catch {}
       updateLoginUI();
+      try { window.dispatchEvent(new CustomEvent("cc-auth-changed", { detail: { user: null, role: "guest" } })); } catch {}
       if (typeof onLoaded === "function") onLoaded();
     }
   });

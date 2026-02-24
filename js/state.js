@@ -3,7 +3,68 @@ import {
   STORAGE_KEY_DAYCELLSETTINGS, STORAGE_KEY_WEEK_VISIBILITY,
   STORAGE_KEY_START_MONDAY, STORAGE_KEY_TRACKED_CATEGORIES, STORAGE_KEY_TRACKED_TASKS,
   STORAGE_KEY_LAST_MODIFIED
-} from "./constants.js?v=20260114_03";
+} from "./constants.js?v=20260224_01";
+
+
+let STORAGE_NAMESPACE = "SIGNED_OUT"; // default: don't load anyone's data until login
+let ALLOW_LEGACY_MIGRATION = false;
+
+function nsKey(baseKey) {
+  // When signed out, avoid reading/writing any persisted planner data.
+  if (!STORAGE_NAMESPACE || STORAGE_NAMESPACE === "SIGNED_OUT") return null;
+  return `${baseKey}__uid_${STORAGE_NAMESPACE}`;
+}
+
+export function setStorageNamespace(uid, { allowLegacyMigration = false } = {}) {
+  STORAGE_NAMESPACE = uid ? String(uid) : "SIGNED_OUT";
+  ALLOW_LEGACY_MIGRATION = !!allowLegacyMigration;
+}
+
+function lsGet(baseKey) {
+  if (!window.localStorage) return null;
+  const k = nsKey(baseKey);
+  if (!k) return null;
+  const v = localStorage.getItem(k);
+  if (v !== null) return v;
+
+  // Optional one-time legacy migration from global keys (pre-login era)
+  if (ALLOW_LEGACY_MIGRATION) {
+    const legacy = localStorage.getItem(baseKey);
+    if (legacy !== null) return legacy;
+  }
+  return null;
+}
+
+function lsSet(baseKey, value) {
+  if (!window.localStorage) return;
+  const k = nsKey(baseKey);
+  if (!k) return;
+  localStorage.setItem(k, value);
+
+  // If we just used legacy migration, leave legacy keys alone (safe but optional).
+}
+
+export function resetStateToEmpty() {
+  state.tasks = [];
+  initAssignments();
+  state.locations = [];
+  initDayCellSettings();
+  state.weekVisibility = [true,true,true,true];
+  state.startMondayISO = null;
+  state.lastModified = 0;
+  state.trackedCategories = [];
+  state.trackedTasks = [];
+  state.nextTrackedCategoryId = 1;
+  state.nextTrackedTaskId = 1;
+  state.nextTrackedFieldId = 1;
+  state.nextTaskId = 1;
+  state.nextLocationId = 1;
+  state.editingTaskId = null;
+  state.editingLocationId = null;
+  state.draggedTaskIndex = null;
+  state.calendarDragSource = null;
+  state.dragMode = "insert";
+}
 
 export const state = {
   // Core data
@@ -16,11 +77,7 @@ export const state = {
   // Date basis (ISO yyyy-mm-dd) for Monday of Week 1
   startMondayISO: null,
 
-  // Last modification time (ms since epoch). Used to avoid Drive sync overwriting newer local changes.
-  lastModified: 0,
-
-  // Cross-device conflict resolution
-  // Updated whenever we persist state locally (ms since epoch)
+  // Last modification time (ms since epoch). Used for cross-device conflict resolution.
   lastModified: 0,
 
   // Tracked Tasks (custom form-like tasks)
@@ -176,15 +233,15 @@ export function loadState() {
   let storedTasks=null, storedAssignments=null, storedLocations=null, storedSettings=null, storedWeekVisibility=null, storedStartMonday=null, storedTrackedCategories=null, storedTrackedTasks=null, storedLastModified=null;
   if (window.localStorage) {
     try {
-      storedTasks = localStorage.getItem(STORAGE_KEY_TASKS);
-      storedAssignments = localStorage.getItem(STORAGE_KEY_ASSIGNMENTS);
-      storedLocations = localStorage.getItem(STORAGE_KEY_LOCATIONS);
-      storedSettings = localStorage.getItem(STORAGE_KEY_DAYCELLSETTINGS);
-      storedWeekVisibility = localStorage.getItem(STORAGE_KEY_WEEK_VISIBILITY);
-      storedStartMonday = localStorage.getItem(STORAGE_KEY_START_MONDAY);
-      storedLastModified = localStorage.getItem(STORAGE_KEY_LAST_MODIFIED);
-      storedTrackedCategories = localStorage.getItem(STORAGE_KEY_TRACKED_CATEGORIES);
-      storedTrackedTasks = localStorage.getItem(STORAGE_KEY_TRACKED_TASKS);
+      storedTasks = lsGet(STORAGE_KEY_TASKS);
+      storedAssignments = lsGet(STORAGE_KEY_ASSIGNMENTS);
+      storedLocations = lsGet(STORAGE_KEY_LOCATIONS);
+      storedSettings = lsGet(STORAGE_KEY_DAYCELLSETTINGS);
+      storedWeekVisibility = lsGet(STORAGE_KEY_WEEK_VISIBILITY);
+      storedStartMonday = lsGet(STORAGE_KEY_START_MONDAY);
+      storedLastModified = lsGet(STORAGE_KEY_LAST_MODIFIED);
+      storedTrackedCategories = lsGet(STORAGE_KEY_TRACKED_CATEGORIES);
+      storedTrackedTasks = lsGet(STORAGE_KEY_TRACKED_TASKS);
     } catch (e) {
       console.warn("Unable to load state:", e);
     }
@@ -253,15 +310,15 @@ export function saveStateLocalOnly() {
   try {
     // Update last-modified timestamp whenever we save.
     state.lastModified = Date.now();
-    localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(state.tasks));
-    localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(state.assignments));
-    localStorage.setItem(STORAGE_KEY_LOCATIONS, JSON.stringify(state.locations));
-    localStorage.setItem(STORAGE_KEY_DAYCELLSETTINGS, JSON.stringify(state.dayCellSettings));
-    localStorage.setItem(STORAGE_KEY_WEEK_VISIBILITY, JSON.stringify(state.weekVisibility));
-    localStorage.setItem(STORAGE_KEY_LAST_MODIFIED, JSON.stringify(state.lastModified));
-    localStorage.setItem(STORAGE_KEY_START_MONDAY, JSON.stringify(state.startMondayISO));
-    localStorage.setItem(STORAGE_KEY_TRACKED_CATEGORIES, JSON.stringify(state.trackedCategories));
-    localStorage.setItem(STORAGE_KEY_TRACKED_TASKS, JSON.stringify(state.trackedTasks));
+    lsSet(STORAGE_KEY_TASKS, JSON.stringify(state.tasks));
+    lsSet(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(state.assignments));
+    lsSet(STORAGE_KEY_LOCATIONS, JSON.stringify(state.locations));
+    lsSet(STORAGE_KEY_DAYCELLSETTINGS, JSON.stringify(state.dayCellSettings));
+    lsSet(STORAGE_KEY_WEEK_VISIBILITY, JSON.stringify(state.weekVisibility));
+    lsSet(STORAGE_KEY_LAST_MODIFIED, JSON.stringify(state.lastModified));
+    lsSet(STORAGE_KEY_START_MONDAY, JSON.stringify(state.startMondayISO));
+    lsSet(STORAGE_KEY_TRACKED_CATEGORIES, JSON.stringify(state.trackedCategories));
+    lsSet(STORAGE_KEY_TRACKED_TASKS, JSON.stringify(state.trackedTasks));
   } catch (e) {
     console.warn("Unable to save state:", e);
   }
