@@ -179,7 +179,12 @@ export function renderCalendar() {
       const dayCell = document.createElement("div");
       dayCell.className = "day-cell";
 
-      const settings = state.dayCellSettings[w][d] || { startLocationId:null, startTime:null };
+      // Defensive: older/partial states (or early render before state normalization)
+      // can have missing dayCellSettings shape.
+      if (!Array.isArray(state.dayCellSettings)) state.dayCellSettings = [];
+      if (!Array.isArray(state.dayCellSettings[w])) state.dayCellSettings[w] = [];
+      if (!state.dayCellSettings[w][d]) state.dayCellSettings[w][d] = { startLocationId:null, startTime:null };
+      const settings = state.dayCellSettings[w][d];
 
       const locTimeDiv = document.createElement("div");
       locTimeDiv.className = "day-loc-time";
