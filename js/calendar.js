@@ -1,8 +1,8 @@
-import { state, saveState } from "./state.js?v=20260224_04";
-import { dayNames } from "./constants.js?v=20260224_04";
-import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js?v=20260224_04";
-import { populateTaskLocationOptions, renderTaskList } from "./tasks.js?v=20260224_04";
-import { renderLocationsTab } from "./locations.js?v=20260224_04";
+import { state, saveState } from "./state.js?v=20260224_05";
+import { dayNames } from "./constants.js?v=20260224_05";
+import { escapeHtml, formatFrequency, formatMinutesTo12hTime, formatMinutesToHHMM, getLocationColorById, getLocationNameByValue, getPlannerDateLabel } from "./utils.js?v=20260224_05";
+import { populateTaskLocationOptions, renderTaskList } from "./tasks.js?v=20260224_05";
+import { renderLocationsTab } from "./locations.js?v=20260224_05";
 
 export function renderCalendarHeader() {
   const headerRow = document.getElementById("calendarDayHeader");
@@ -68,13 +68,17 @@ function addTaskToCell(weekIndex, dayIndex, taskId) {
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
 
+  // If the task is assigned to a specific location, respect that.
+  // Only fall back to the day's "current" location when the task is set to All locations.
   const currentLocId = getCurrentLocationForDay(weekIndex, dayIndex);
-  if (isTaskBlockedForLocation(task, weekIndex, dayIndex, currentLocId)) {
+  const targetLocId = (task.location && task.location !== "all") ? task.location : (currentLocId || null);
+
+  if (isTaskBlockedForLocation(task, weekIndex, dayIndex, targetLocId)) {
     alert("This task can't be added here based on its frequency rules for this location.");
     return;
   }
 
-  state.assignments[weekIndex][dayIndex].push({ type:"task", taskId, locationId: currentLocId || null, done:false });
+  state.assignments[weekIndex][dayIndex].push({ type:"task", taskId, locationId: targetLocId, done:false });
   saveState();
 }
 
