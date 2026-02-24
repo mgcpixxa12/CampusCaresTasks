@@ -1,6 +1,6 @@
-import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260224_01";
-import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260224_01";
-import { auth, db, firebaseReady } from "./firebase.js?v=20260224_01";
+import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260224_02";
+import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260224_02";
+import { auth, db, firebaseReady } from "./firebase.js?v=20260224_02";
 
 import {
   onAuthStateChanged,

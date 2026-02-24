@@ -1,6 +1,6 @@
-import { state, saveState } from "./state.js?v=20260224_01";
-import { escapeHtml, formatFrequency } from "./utils.js?v=20260224_01";
-import { showTab } from "./tabs.js?v=20260224_01";
+import { state, saveState } from "./state.js?v=20260224_02";
+import { escapeHtml, formatFrequency } from "./utils.js?v=20260224_02";
+import { showTab } from "./tabs.js?v=20260224_02";
 
 export function initLocationForm() {
   const submitBtn = document.getElementById("locationFormSubmitBtn");
