@@ -1,5 +1,5 @@
-import { state, saveState } from "./state.js?v=20260224_02";
-import { escapeHtml, getLocationNameByValue } from "./utils.js?v=20260224_02";
+import { state, saveState } from "./state.js?v=20260224_04";
+import { escapeHtml, getLocationNameByValue } from "./utils.js?v=20260224_04";
 
 // Local (in-memory) field builder for the create form
 let draftFields = [];
@@ -201,6 +201,28 @@ function clearTrackedForm() {
 }
 
 export function initTrackedTasksUI() {
+  // Collapsible builder panel
+  const toggleBtn = document.getElementById("toggleTrackedBuilderBtn");
+  const builderPanel = document.getElementById("trackedBuilderPanel");
+  const bulkPanel = document.getElementById("bulkTrackedCard");
+  const setBuilderOpen = (open) => {
+    if (builderPanel) builderPanel.classList.toggle("hidden", !open);
+    if (bulkPanel) bulkPanel.classList.toggle("hidden", !open);
+    if (toggleBtn) toggleBtn.textContent = open ? "Close" : "Add Tracked Task";
+    if (open) {
+      // focus title for quicker entry
+      setTimeout(() => document.getElementById("trackedTaskTitle")?.focus(), 0);
+    }
+  };
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      const isOpen = builderPanel && !builderPanel.classList.contains("hidden");
+      setBuilderOpen(!isOpen);
+    });
+  }
+  // default closed
+  setBuilderOpen(false);
+
   // Toggle highlight controls based on field type
   const typeEl = document.getElementById("trackedFieldType");
   const hlWrap = document.getElementById("trackedFieldHighlight")?.parentElement;
@@ -670,7 +692,10 @@ function computeTaskStatusStyle(t) {
 function renderTrackedTaskRow(t) {
   const locLabel = getLocationNameByValue(t.location);
 
-  let html = `<div class="tracked-task-row" data-task="${t.id}">
+  const catId = t.categoryId || 0;
+  const locId = (t.location === "all") ? 0 : (t.location || 0);
+
+  let html = `<div class="tracked-task-row" draggable="true" data-task="${t.id}" data-cat="${catId}" data-loc="${locId}" data-title="${escapeHtml(String(t.title || ""))}">
     <div class="tracked-task-name">
       <strong>${escapeHtml(t.title)}</strong>
       <span class="muted"> • ${escapeHtml(locLabel)}</span>
@@ -687,12 +712,15 @@ function renderTrackedTaskRow(t) {
         const checked = f.value ? "checked" : "";
         html += `<label class="tracked-field tracked-field-checkbox">
           <span class="tracked-field-label">${escapeHtml(f.label)}</span>
-          <input type="checkbox" data-field="${fid}" ${checked} />
+          <div class="tracked-field-box">
+            <span class="muted" style="font-size:12px;">&nbsp;</span>
+            <input type="checkbox" data-field="${fid}" ${checked} />
+          </div>
         </label>`;
       } else if (f.type === "date") {
         html += `<label class="tracked-field tracked-field-date">
           <span class="tracked-field-label">${escapeHtml(f.label)}</span>
-          <div class="tracked-date-row" style="${computeDateFieldStyle(f)}">
+          <div class="tracked-field-box" style="${computeDateFieldStyle(f)}">
             <input type="date" data-field="${fid}" value="${escapeHtml(String(f.value || ""))}" />
             <button type="button" class="tracked-date-today" title="Set to today" data-set-today="${fid}">✓</button>
           </div>
@@ -700,12 +728,16 @@ function renderTrackedTaskRow(t) {
       } else if (f.type === "number") {
         html += `<label class="tracked-field">
           <span class="tracked-field-label">${escapeHtml(f.label)}</span>
-          <input type="number" data-field="${fid}" value="${escapeHtml(String(f.value || ""))}" />
+          <div class="tracked-field-box">
+            <input type="number" data-field="${fid}" value="${escapeHtml(String(f.value || ""))}" />
+          </div>
         </label>`;
       } else {
         html += `<label class="tracked-field">
           <span class="tracked-field-label">${escapeHtml(f.label)}</span>
-          <input type="text" data-field="${fid}" value="${escapeHtml(String(f.value || ""))}" />
+          <div class="tracked-field-box">
+            <input type="text" data-field="${fid}" value="${escapeHtml(String(f.value || ""))}" />
+          </div>
         </label>`;
       }
     });
@@ -719,6 +751,139 @@ function renderTrackedTaskRow(t) {
   </div>`;
 
   return html;
+}
+
+function groupKeyForTask(t) {
+  const catId = t.categoryId || 0;
+  const locId = (t.location === "all") ? 0 : (t.location || 0);
+  return `${catId}::${locId}`;
+}
+
+function reorderTrackedTasksInGroup({ sourceId, targetId, applyToSameTitle = false }) {
+  if (!Array.isArray(state.trackedTasks) || state.trackedTasks.length === 0) return false;
+
+  const source = state.trackedTasks.find(t => String(t.id) === String(sourceId));
+  const target = state.trackedTasks.find(t => String(t.id) === String(targetId));
+  if (!source || !target) return false;
+
+  const targetGroupKey = groupKeyForTask(target);
+
+  const moveOne = (taskId, desiredIndexInGroup) => {
+    const old = state.trackedTasks;
+    const groupTasks = old.filter(t => groupKeyForTask(t) === targetGroupKey);
+    const ids = groupTasks.map(t => t.id);
+    const curIdx = ids.findIndex(id => String(id) === String(taskId));
+    if (curIdx === -1) return;
+
+    const newIds = ids.slice();
+    const [removed] = newIds.splice(curIdx, 1);
+    let insertAt = Math.max(0, Math.min(newIds.length, desiredIndexInGroup));
+    newIds.splice(insertAt, 0, removed);
+
+    // Rebuild global array while preserving other groups
+    const firstPos = old.findIndex(t => groupKeyForTask(t) === targetGroupKey);
+    const rebuilt = [];
+    const inGroup = new Set(ids.map(id => String(id)));
+    for (let i = 0; i < old.length; i++) {
+      const t = old[i];
+      if (groupKeyForTask(t) === targetGroupKey) continue;
+      rebuilt.push(t);
+      // If we just passed the insertion anchor (first group position), inject group here
+      if (i === firstPos - 1) {
+        newIds.forEach(id => {
+          const obj = old.find(tt => String(tt.id) === String(id));
+          if (obj) rebuilt.push(obj);
+        });
+      }
+    }
+    // If group was at start or not injected, inject at beginning/end
+    const hasInjected = rebuilt.some(t => groupKeyForTask(t) === targetGroupKey);
+    if (!hasInjected) {
+      const groupObjs = newIds.map(id => old.find(tt => String(tt.id) === String(id))).filter(Boolean);
+      if (firstPos <= 0) rebuilt.unshift(...groupObjs);
+      else rebuilt.push(...groupObjs);
+    }
+
+    state.trackedTasks = rebuilt;
+  };
+
+  // Determine desired index: insert source before target within the target group
+  const targetGroupTasks = state.trackedTasks.filter(t => groupKeyForTask(t) === targetGroupKey);
+  const targetIdxInGroup = targetGroupTasks.findIndex(t => String(t.id) === String(targetId));
+  if (targetIdxInGroup === -1) return false;
+
+  if (!applyToSameTitle) {
+    // Only allow reorder within same group
+    if (groupKeyForTask(source) !== targetGroupKey) return false;
+    moveOne(source.id, targetIdxInGroup);
+    return true;
+  }
+
+  // Apply across locations: reorder tasks with same title+category to the same index within their own group.
+  const titleNeedle = String(source.title || "").trim().toLowerCase();
+  const catNeedle = source.categoryId || 0;
+  if (!titleNeedle) return false;
+
+  // For each group in this category, find matching title tasks and move them.
+  const groups = new Set(state.trackedTasks
+    .filter(t => (t.categoryId || 0) === catNeedle)
+    .map(t => groupKeyForTask(t)));
+
+  groups.forEach(gk => {
+    const groupTasks = state.trackedTasks.filter(t => groupKeyForTask(t) === gk);
+    const match = groupTasks.find(t => String(t.title || "").trim().toLowerCase() === titleNeedle);
+    if (!match) return;
+    // Use same targetIdxInGroup (clamped) for each group
+    const idx = Math.max(0, Math.min(groupTasks.length - 1, targetIdxInGroup));
+    // Temporarily treat this group's key as target by swapping targetGroupKey? easiest: move within that group only.
+    const oldTarget = targetGroupKey;
+    // Hack: create a faux target in this group at idx by picking the current task at idx.
+    const fauxTarget = groupTasks[idx];
+    if (!fauxTarget) return;
+    // Recurse without apply across, but using faux target
+    const prevTarget = target.id;
+    // Move only if in same group
+    const src = match;
+    const tgt = fauxTarget;
+    if (groupKeyForTask(src) !== groupKeyForTask(tgt)) return;
+
+    // Move src before tgt within its group.
+    const ids = groupTasks.map(t => t.id);
+    const curIdx = ids.findIndex(id => String(id) === String(src.id));
+    const insertBefore = ids.findIndex(id => String(id) === String(tgt.id));
+    if (curIdx === -1 || insertBefore === -1) return;
+
+    const newIds = ids.slice();
+    const [removed] = newIds.splice(curIdx, 1);
+    let insertAt = insertBefore;
+    if (curIdx < insertBefore) insertAt = insertBefore - 1;
+    insertAt = Math.max(0, Math.min(newIds.length, insertAt));
+    newIds.splice(insertAt, 0, removed);
+
+    const old = state.trackedTasks;
+    const firstPos = old.findIndex(t => groupKeyForTask(t) === gk);
+    const rebuilt = [];
+    for (let i = 0; i < old.length; i++) {
+      const t = old[i];
+      if (groupKeyForTask(t) === gk) continue;
+      rebuilt.push(t);
+      if (i === firstPos - 1) {
+        newIds.forEach(id => {
+          const obj = old.find(tt => String(tt.id) === String(id));
+          if (obj) rebuilt.push(obj);
+        });
+      }
+    }
+    const hasInjected = rebuilt.some(t => groupKeyForTask(t) === gk);
+    if (!hasInjected) {
+      const groupObjs = newIds.map(id => old.find(tt => String(tt.id) === String(id))).filter(Boolean);
+      if (firstPos <= 0) rebuilt.unshift(...groupObjs);
+      else rebuilt.push(...groupObjs);
+    }
+    state.trackedTasks = rebuilt;
+  });
+
+  return true;
 }
 
 
@@ -809,6 +974,48 @@ export function renderTrackedTasks() {
 
   html += `</div>`;
   wrapper.innerHTML = html;
+
+  // Drag & drop reordering (within a location group).
+  // Hold Shift/Ctrl/Meta while dragging to apply ordering across locations for same title+category.
+  let dragSourceId = null;
+  let dragApplyGroup = false;
+  wrapper.querySelectorAll(".tracked-task-row[draggable=true]").forEach(row => {
+    row.addEventListener("dragstart", (e) => {
+      dragSourceId = row.dataset.task || null;
+      dragApplyGroup = !!(e.shiftKey || e.ctrlKey || e.metaKey);
+      row.classList.add("dragging");
+      try {
+        e.dataTransfer.setData("text/plain", dragSourceId || "");
+        e.dataTransfer.effectAllowed = "move";
+      } catch (_) {}
+    });
+    row.addEventListener("dragend", () => {
+      dragSourceId = null;
+      dragApplyGroup = false;
+      row.classList.remove("dragging");
+      wrapper.querySelectorAll(".tracked-task-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      row.classList.add("drag-over");
+      try { e.dataTransfer.dropEffect = "move"; } catch (_) {}
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      const sourceId = dragSourceId || (() => {
+        try { return e.dataTransfer.getData("text/plain"); } catch (_) { return null; }
+      })();
+      const targetId = row.dataset.task || null;
+      if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
+
+      const moved = reorderTrackedTasksInGroup({ sourceId, targetId, applyToSameTitle: dragApplyGroup });
+      if (!moved) return;
+      saveState();
+      renderTrackedTasks();
+    });
+  });
 
   // Category accordion: only one open at a time
   wrapper.querySelectorAll("button.tracked-category-toggle").forEach(btn => {

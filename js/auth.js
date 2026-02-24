@@ -1,6 +1,6 @@
-import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260224_02";
-import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state } from "./state.js?v=20260224_02";
-import { auth, db, firebaseReady } from "./firebase.js?v=20260224_02";
+import { ADMIN_EMAILS, LOGIN_STORAGE_KEY, APP_VERSION } from "./constants.js?v=20260224_04";
+import { applyLoadedState, getSerializableState, saveStateLocalOnly, setDriveSaveScheduler, state, resetStateToEmpty } from "./state.js?v=20260224_04";
+import { auth, db, firebaseReady } from "./firebase.js?v=20260224_04";
 
 import {
   onAuthStateChanged,
@@ -207,9 +207,13 @@ async function loadFromFirestoreIfPossible() {
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
-      // First login: push current local state up as the initial state.
+      // First login for this UID.
+      // SECURITY: Do NOT seed a brand-new account from whatever might be in this browser's localStorage.
+      // That can leak old data on shared devices. Start blank and create the Firestore doc.
+      resetStateToEmpty();
+      saveStateLocalOnly();
       await setDoc(ref, { ...encodeStateForFirestore(getSerializableState()), updatedAt: serverTimestamp() });
-      return false;
+      return true;
     }
 
     const rawRemote = snap.data() || {};

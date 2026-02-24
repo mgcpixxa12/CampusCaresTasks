@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cool Man</title>
-<link rel="stylesheet" href="./css/styles.css?v=20260224_02" />
+<link rel="stylesheet" href="./css/styles.css?v=20260224_04" />
 </head>
 <body>
   <header>
@@ -155,7 +155,15 @@
     <!-- Tracked Tasks Tab -->
     <section id="trackedTab" class="tab">
       <div class="tasks-container">
-        <div class="task-form">
+        <div class="tasks-list-card">
+          <div class="tracked-header-row">
+            <h2 style="margin:0;">Tracked Tasks</h2>
+            <button id="toggleTrackedBuilderBtn" class="btn" type="button">Add Tracked Task</button>
+          </div>
+          <div id="trackedTasksWrapper"></div>
+        </div>
+
+        <div id="trackedBuilderPanel" class="task-form collapsible hidden">
           <h2>Tracked Task Builder</h2>
           <div class="form-row">
             <div style="flex:2;">
@@ -217,7 +225,7 @@
           <button id="trackedTaskCancelBtn" type="button" class="hidden" style="margin-left:8px;">Cancel Edit</button>
         </div>
 
-        <div class="task-form" id="bulkTrackedCard">
+        <div class="task-form collapsible hidden" id="bulkTrackedCard">
           <h2>Bulk Add Field</h2>
           <p class="muted" style="margin-top:-6px;">Add the same field to many tracked tasks at once (ex: 14 tasks at each school) without editing one-by-one.</p>
 
@@ -267,15 +275,10 @@
 
           <div id="bulkAddFieldStatus" class="muted" style="margin-top:6px;"></div>
         </div>
-
-        <div class="tasks-list-card">
-          <h2>Tracked Tasks</h2>
-          <div id="trackedTasksWrapper"></div>
-        </div>
       </div>
     </section>
   </main>
 
-  <script type="module" src="./js/main.js?v=20260224_02"></script>
+  <script type="module" src="./js/main.js?v=20260224_04"></script>
 </body>
 </html>
