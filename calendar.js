@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cool Man</title>
+<link rel="stylesheet" href="./css/styles.css?v=20260309_01" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <div id="versionLabel" class="version-label"></div>
+      <h1>4-Week Planner</h1>
+      <span id="sessionText" class="muted">Not signed in</span>
+    </div>
+    <div class="header-right">
+      <button id="printBtn" class="btn secondary">Print calendar</button>
+      <button id="resetDoneBtn" class="btn secondary">Reset checkmarks</button>
+      <div id="signin"></div>
+<button id="signOutBtn" class="btn secondary hidden">Sign out</button>
+    </div>
+  </header>
+
+  <div class="tab-buttons">
+    <button id="calendarTabBtn" class="active" data-tab="calendar">Calendar</button>
+    <button id="tasksTabBtn" data-tab="tasks">Tasks</button>
+    <button id="locationsTabBtn" data-tab="locations">Locations</button>
+    <button id="unfinishedTabBtn" data-tab="unfinished">Unfinished Tasks</button>
+    <button id="trackedTabBtn" data-tab="tracked">Tracked Tasks</button>
+  </div>
+
+  <main>
+    <!-- Calendar Tab -->
+    <section id="calendarTab" class="tab active">
+      <div class="calendar-container">
+        <div class="legend">
+          • Add tasks on <strong>Tasks</strong>, locations on <strong>Locations</strong>, then assign here.<br/>
+          • Travel = +40 min (counts toward total).<br/>
+          • Lunch = task with <strong>negative minutes</strong>: counts toward elapsed time, but <strong>not</strong> the total.<br/>
+          • Weekly tasks: progress shown as 1/4 per location; Daily as 1/8 per location.<br/>
+          • Saturday/Sunday only appear if you actually schedule something on those days.<br/>
+          <strong>Drag mode:</strong>
+          <label class="drag-mode-option">
+            <input type="radio" name="dragMode" value="insert" checked> Insert
+          </label>
+          <label class="drag-mode-option">
+            <input type="radio" name="dragMode" value="swap"> Swap
+          </label>
+          <br/>
+          <div class="start-date-row"><strong>Week 1 Monday date:</strong> <input id="startMondayDate" type="date" /> <span class="muted" id="startMondayHint"></span></div>
+          <strong>Weeks:</strong>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="0" checked> Week 1
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="1" checked> Week 2
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="2" checked> Week 3
+          </label>
+          <label class="drag-mode-option">
+            <input type="checkbox" class="week-toggle" data-week="3" checked> Week 4
+          </label>
+        </div>
+        <div class="calendar-header-row" id="calendarDayHeader"></div>
+        <div id="calendar"></div>
+      </div>
+    </section>
+
+    <!-- Tasks Tab -->
+    <section id="tasksTab" class="tab">
+      <div class="tasks-container">
+        <div class="task-form">
+          <h2>Task Editor</h2>
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="taskName">Task Name</label>
+              <input type="text" id="taskName" placeholder="e.g. Clean classroom sinks" />
+            </div>
+            <div style="flex:1;">
+              <label for="taskLength">Task Length (minutes)</label>
+              <input type="number" id="taskLength" placeholder="30" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="taskDescription">Task Description</label>
+              <textarea id="taskDescription" placeholder="Optional details..."></textarea>
+            </div>
+            <div style="flex:1;">
+              <label for="taskFrequency">Frequency</label>
+              <select id="taskFrequency">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+                <option value="one-time">One-time</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label for="taskLocation">Location</label>
+              <select id="taskLocation"></select>
+            </div>
+          </div>
+          <button id="taskFormSubmitBtn" type="button">Add Task to List</button>
+          <button id="taskFormCancelBtn" type="button" style="display:none;margin-left:8px;">Cancel Edit</button>
+        </div>
+
+        <div class="tasks-list-card">
+          <h2>Current Tasks (drag to reorder)</h2>
+          <div id="tasksTableWrapper"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Locations Tab -->
+    <section id="locationsTab" class="tab">
+      <div class="locations-container">
+        <div class="location-form">
+          <h2>Locations</h2>
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="locationName">Location Name</label>
+              <input type="text" id="locationName" placeholder="e.g. OVA Holly Springs" />
+            </div>
+            <div style="flex:1;">
+              <label for="locationColor">Highlight Color</label>
+              <input type="color" id="locationColor" value="#ffffaa" />
+            </div>
+          </div>
+          <button id="locationFormSubmitBtn" type="button">Add Location</button>
+          <button id="locationFormCancelBtn" type="button" style="display:none;margin-left:8px;">Cancel Edit</button>
+        </div>
+
+        <div class="locations-list-card">
+          <h2>Monthly Checklist by Location</h2>
+          <div id="locationsListWrapper"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Unfinished Tasks Tab -->
+    <section id="unfinishedTab" class="tab">
+      <div class="tasks-container">
+        <div class="tasks-list-card">
+          <h2>Unfinished Tasks</h2>
+          <p class="muted" style="margin-top:-6px;">Tasks from past days that were not checked off.</p>
+          <div id="unfinishedTasksWrapper"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tracked Tasks Tab -->
+    <section id="trackedTab" class="tab">
+      <div class="tasks-container">
+        <div class="tasks-list-card">
+          <div class="tracked-header-row">
+            <h2 style="margin:0;">Tracked Tasks</h2>
+            <button id="toggleTrackedBuilderBtn" class="btn" type="button">Add Tracked Task</button>
+          </div>
+          <div id="trackedTasksWrapper"></div>
+        </div>
+
+        <div id="trackedBuilderPanel" class="task-form collapsible hidden">
+          <h2>Tracked Task Builder</h2>
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="trackedTaskTitle">Task Title</label>
+              <input type="text" id="trackedTaskTitle" placeholder="e.g. Quarterly Fire Extinguisher Audit" />
+            </div>
+            <div style="flex:1;">
+              <label for="trackedTaskLocation">Location</label>
+              <select id="trackedTaskLocation"></select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label for="trackedTaskCategory">Category</label>
+              <select id="trackedTaskCategory"></select>
+            </div>
+            <div style="flex:1;">
+              <label for="newTrackedCategory">New Category</label>
+              <input type="text" id="newTrackedCategory" placeholder="Optional: add new category" />
+            </div>
+          </div>
+
+          <div class="field-builder">
+            <h3 style="margin:8px 0 6px;font-size:14px;">Fields (like a mini Google Form)</h3>
+            <div class="form-row">
+              <div style="flex:2;">
+                <label for="trackedFieldLabel">Field label</label>
+                <input type="text" id="trackedFieldLabel" placeholder="e.g. Date Completed" />
+              </div>
+              <div style="flex:1;">
+                <label for="trackedFieldType">Type</label>
+                <select id="trackedFieldType">
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                  <option value="checkbox">Checkbox</option>
+                </select>
+                <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                  <input type="checkbox" id="trackedFieldHighlight" />
+                  <span style="font-size:12px;">Highlight</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:12px;">Expire</span>
+                  <input type="number" id="trackedFieldExpiryDays" value="28" min="1" style="width:70px; font-size:12px; padding:4px;" />
+                  <span style="font-size:12px;">days</span>
+                </label>
+
+              </div>
+              <div style="flex:0;">
+                <label>&nbsp;</label>
+                <button id="addTrackedFieldBtn" type="button">Add Field</button>
+              </div>
+            </div>
+            <div id="trackedFieldsPreview"></div>
+          </div>
+
+          <button id="trackedTaskCreateBtn" type="button">Add Tracked Task</button>
+          <button id="trackedTaskClearBtn" class="btn secondary" type="button" style="margin-left:8px;">Clear</button>
+          <button id="trackedTaskCancelBtn" type="button" class="hidden" style="margin-left:8px;">Cancel Edit</button>
+        </div>
+
+        <div class="task-form collapsible hidden" id="bulkTrackedCard">
+          <h2>Bulk Add Field</h2>
+          <p class="muted" style="margin-top:-6px;">Add the same field to many tracked tasks at once (ex: 14 tasks at each school) without editing one-by-one.</p>
+
+          <div class="form-row">
+            <div style="flex:1;">
+              <label for="bulkTrackedLocation">Location</label>
+              <select id="bulkTrackedLocation"></select>
+            </div>
+            <div style="flex:1;">
+              <label for="bulkTrackedCategory">Category</label>
+              <select id="bulkTrackedCategory"></select>
+            </div>
+            <div style="flex:2;">
+              <label for="bulkTrackedSearch">Title contains</label>
+              <input type="text" id="bulkTrackedSearch" placeholder="Optional filter (ex: 'Weekly' or 'Kitchen')" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div style="flex:2;">
+              <label for="bulkFieldLabel">Field label</label>
+              <input type="text" id="bulkFieldLabel" placeholder="e.g. Completed By" />
+            </div>
+            <div style="flex:1;">
+              <label for="bulkFieldType">Type</label>
+              <select id="bulkFieldType">
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="checkbox">Checkbox</option>
+              </select>
+              <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                <input type="checkbox" id="bulkFieldHighlight" />
+                <span style="font-size:12px;">Highlight</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px;">Expire</span>
+                <input type="number" id="bulkFieldExpiryDays" value="28" min="1" style="width:70px; font-size:12px; padding:4px;" />
+                <span style="font-size:12px;">days</span>
+              </label>
+            </div>
+            <div style="flex:0;">
+              <label>&nbsp;</label>
+              <button id="bulkAddFieldBtn" type="button">Add Field to Matching Tasks</button>
+            </div>
+          </div>
+
+          <div id="bulkAddFieldStatus" class="muted" style="margin-top:6px;"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/main.js?v=20260309_01"></script>
+</body>
+</html>
