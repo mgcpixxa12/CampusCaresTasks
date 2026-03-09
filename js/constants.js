@@ -22,7 +22,7 @@ export const STORAGE_KEY_LAST_MODIFIED = "planner_lastModified_v1";
 
 
 // App version (shown top-left)
-export const APP_VERSION = "v2026.02.03-fb-email2";
+export const APP_VERSION = "v2026.03.09-unfinished1";
 
 // Firebase config (fill these in from Firebase console: Project settings -> Your apps)
 export const FIREBASE_CONFIG = {

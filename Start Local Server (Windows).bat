@@ -1,70 +1,43 @@
-# 4-Week Planner (Modular)
+@echo off
+REM ==========================================================
+REM 4-Week Planner - Local Server Launcher (Windows)
+REM ==========================================================
 
-This is your original single-file planner split into separate, cleaner files (no build tools needed).
+cd /d "%~dp0"
 
-## Files
-- `index.html` – markup + loads Google GSI and the ES-module entrypoint
-- `css/styles.css` – all styles
-- `js/main.js` – app bootstrap + wiring
-- `js/state.js` – data model + localStorage + change hooks
-- `js/auth.js` – Google Sign-In + Google Drive sync
-- `js/tabs.js` – tab navigation
-- `js/tasks.js` – task editor + task table rendering
-- `js/locations.js` – locations editor + checklist rendering
-- `js/calendar.js` – calendar rendering + drag/drop + frequency rules
-- `js/utils.js` – shared helpers
-- `js/constants.js` – constants / keys
+set PORT=8000
+set URL=http://localhost:%PORT%/index.html
 
-## Run
-Just open `index.html` in a browser, or host the folder on GitHub Pages.
-(Drive sync requires HTTPS, so GitHub Pages is recommended.)
+REM Find Python
+where python >nul 2>nul
+if %errorlevel%==0 (
+  set PYTHON=python
+) else (
+  where py >nul 2>nul
+  if %errorlevel%==0 (
+    set PYTHON=py -3
+  ) else (
+    echo Python not found. Install from https://www.python.org/
+    pause
+    exit /b 1
+  )
+)
 
-## Local server launcher (double-click)
-For local testing, you can run a tiny server and auto-open Chrome in Incognito:
+echo Starting local server on %URL%
+start "" %PYTHON% -m http.server %PORT%
 
-### Windows
-Double-click: **Start Local Server (Windows).bat**
+timeout /t 1 >nul
 
-### macOS
-Double-click: **Start Local Server (macOS).command**
-- If macOS blocks it: right-click → Open (first run), or run:
-  `chmod +x "Start Local Server (macOS).command"`
+REM Try Chrome locations explicitly (no delayed expansion)
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
+  start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --incognito "%URL%"
+) else if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" (
+  start "" "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" --incognito "%URL%"
+) else (
+  echo Chrome not found. Opening default browser...
+  start "" "%URL%"
+)
 
-### Linux
-Run:
-`chmod +x start-server-linux.sh`
-then:
-`./start-server-linux.sh`
-
-All launchers:
-- Start `python -m http.server` on port **8000**
-- Open `http://localhost:8000/index.html` in **Chrome Incognito** (or default browser if Chrome isn’t found)
-
-## Google Drive sync re-auth behavior
-Google Drive access tokens **expire** and browsers often require a **user click** to re-authorize.
-To prevent annoying popups while you're editing:
-
-- The app will **NOT** trigger an account chooser during background autosave.
-- If Drive needs a refresh, you'll see a **Reconnect Drive** button in the header.
-- Click **Reconnect Drive** once, and autosave will resume.
-
-## New tabs: Unfinished Tasks + Tracked Tasks
-
-### Week 1 Monday date
-On the **Calendar** tab, set the **Week 1 Monday date**. This enables:
-- Showing real dates in the day headers (e.g. “Monday, Jan 5th, 2026”)
-- Automatic “Unfinished Tasks” detection for past days
-
-### Unfinished Tasks
-If a scheduled task on a **past** day is not checked off, it will appear in **Unfinished Tasks**.
-
-### Tracked Tasks
-Create custom tasks with form-like fields (text/number/date/checkbox), optionally grouped by categories.
-Tracked Tasks default to **All locations**, but you can select a specific location.
-
-### Tracked Tasks: "All locations"
-When you create a tracked task with **All locations**, the app generates **one tracked-task instance per location** (so each school/classroom has its own checklist fields & values).
-
-
-## Cache-busting (GitHub Pages)
-This build uses a version query string (`?v=20260114_03`) on all JS module imports so browsers don’t keep running old cached code. If you deploy a new build, bump the BUILD string in `index.html` and the JS import URLs.
+echo.
+echo Server running. Press Ctrl+C to stop.
+pause >nul

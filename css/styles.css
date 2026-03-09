@@ -439,3 +439,22 @@ header{ position:relative; }
   .auth-box{ justify-content:flex-start; }
   .auth-input{ min-width: 140px; }
 }
+
+
+.unfinished-groups{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.unfinished-location-card{
+  border:1px solid #e1e4ea;
+  border-radius:10px;
+  padding:10px;
+  background:#fafcff;
+}
+
+.unfinished-location-card h3{
+  margin:0 0 8px;
+  font-size:14px;
+}

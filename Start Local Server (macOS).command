@@ -1,43 +1,32 @@
-@echo off
-REM ==========================================================
-REM 4-Week Planner - Local Server Launcher (Windows)
-REM ==========================================================
+#!/bin/bash
+# ==========================================================
+# 4-Week Planner - Local Server Launcher (macOS)
+# ==========================================================
 
-cd /d "%~dp0"
+cd "$(dirname "$0")" || exit 1
 
-set PORT=8000
-set URL=http://localhost:%PORT%/index.html
+PORT=8000
+URL="http://localhost:${PORT}/index.html"
 
-REM Find Python
-where python >nul 2>nul
-if %errorlevel%==0 (
-  set PYTHON=python
-) else (
-  where py >nul 2>nul
-  if %errorlevel%==0 (
-    set PYTHON=py -3
-  ) else (
-    echo Python not found. Install from https://www.python.org/
-    pause
-    exit /b 1
-  )
-)
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+elif command -v python >/dev/null 2>&1; then
+  PY=python
+else
+  echo "Python not found. Install Python 3 and try again."
+  read -p "Press Enter to exit..."
+  exit 1
+fi
 
-echo Starting local server on %URL%
-start "" %PYTHON% -m http.server %PORT%
+echo "Starting local server on $URL"
+$PY -m http.server "$PORT" >/dev/null 2>&1 &
+SERVER_PID=$!
 
-timeout /t 1 >nul
+sleep 1
 
-REM Try Chrome locations explicitly (no delayed expansion)
-if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
-  start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --incognito "%URL%"
-) else if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" (
-  start "" "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" --incognito "%URL%"
-) else (
-  echo Chrome not found. Opening default browser...
-  start "" "%URL%"
-)
+open -a "Google Chrome" --args --incognito "$URL" >/dev/null 2>&1 || open "$URL"
 
-echo.
-echo Server running. Press Ctrl+C to stop.
-pause >nul
+echo ""
+echo "Server is running (PID $SERVER_PID)."
+echo "Press Ctrl+C to stop."
+wait $SERVER_PID
